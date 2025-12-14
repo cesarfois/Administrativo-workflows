@@ -10,6 +10,7 @@ const SearchForm = ({ onSearch, onLog, totalCount = 0, onCabinetChange }) => {
     const [allFields, setAllFields] = useState([]); // Store all raw fields
     const [suggestions, setSuggestions] = useState({}); // { [index]: [values] }
     const [filters, setFilters] = useState([{ fieldName: '', value: '' }]);
+    const [resultLimit, setResultLimit] = useState(1000); // Default to 1000
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -130,8 +131,8 @@ const SearchForm = ({ onSearch, onLog, totalCount = 0, onCabinetChange }) => {
         const validFilters = filters.filter(f => f.fieldName && f.value);
 
         onLog(`Searching in cabinet ${selectedCabinet} with ${validFilters.length} filters...`);
-        // Pass all raw fields as the 3rd argument
-        onSearch(selectedCabinet, validFilters, allFields);
+        // Pass all raw fields as the 3rd argument and resultLimit as 4th
+        onSearch(selectedCabinet, validFilters, allFields, resultLimit);
     };
 
     if (loading) return <LoadingSpinner />;
@@ -270,7 +271,7 @@ const SearchForm = ({ onSearch, onLog, totalCount = 0, onCabinetChange }) => {
                     </div>
                 )}
 
-                {/* Bottom Row: Total Count (Left) & Search Button (Right) */}
+                {/* Bottom Row: Total Count (Left) & Limit Selector + Search Button (Right) */}
                 <div className="flex justify-between items-end mt-2">
                     {/* Total Count Display - Moved here */}
                     <div>
@@ -282,14 +283,32 @@ const SearchForm = ({ onSearch, onLog, totalCount = 0, onCabinetChange }) => {
                         )}
                     </div>
 
-                    {/* Search Button */}
-                    <button
-                        className="btn btn-primary btn-sm"
-                        onClick={handleSearch}
-                        disabled={!selectedCabinet}
-                    >
-                        Search
-                    </button>
+                    {/* Limit Selector + Search Button */}
+                    <div className="flex gap-2 items-center">
+                        <div className="form-control">
+                            <label className="label py-0 px-0 mb-1">
+                                <span className="label-text text-xs">Result Limit</span>
+                            </label>
+                            <select
+                                className="select select-bordered select-sm text-xs w-32"
+                                value={resultLimit}
+                                onChange={(e) => setResultLimit(Number(e.target.value))}
+                            >
+                                <option value={100}>100</option>
+                                <option value={500}>500</option>
+                                <option value={1000}>1,000</option>
+                                <option value={2000}>2,000</option>
+                                <option value={999999}>All</option>
+                            </select>
+                        </div>
+                        <button
+                            className="btn btn-primary btn-sm self-end"
+                            onClick={handleSearch}
+                            disabled={!selectedCabinet}
+                        >
+                            Search
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

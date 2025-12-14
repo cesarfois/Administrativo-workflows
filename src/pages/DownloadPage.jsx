@@ -20,6 +20,7 @@ const DownloadPage = () => {
     const [folderName, setFolderName] = useState('');
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+    const cancelDownloadRef = useRef(false);
 
     // Round-Trip Monitor State
     const [monitorHandle, setMonitorHandle] = useState(null);
@@ -138,6 +139,7 @@ const DownloadPage = () => {
         }
 
         setIsDownloading(true);
+        cancelDownloadRef.current = false; // Reset cancel flag
         setDownloadProgress({ current: 0, total: selectedIds.length });
         addLog(`⬇️ Starting bulk download of ${selectedIds.length} documents...`);
 
@@ -146,6 +148,12 @@ const DownloadPage = () => {
             let failCount = 0;
 
             for (let i = 0; i < selectedIds.length; i++) {
+                // Check if download was cancelled
+                if (cancelDownloadRef.current) {
+                    addLog(`⏹️ Download cancelled by user at ${i}/${selectedIds.length}`);
+                    break;
+                }
+
                 const id = selectedIds[i];
                 const doc = results.find(r => r.Id === id);
                 const title = doc?.Title || doc?.Id || `document_${id}`;
@@ -176,11 +184,16 @@ const DownloadPage = () => {
                 }
             }
 
-            addLog(`🎉 Download complete. Success: ${successCount}, Failed: ${failCount}`);
-            if (failCount === 0) {
-                alert('All files downloaded successfully!');
+            if (cancelDownloadRef.current) {
+                addLog(`🛑 Download cancelled. Completed: ${successCount}, Failed: ${failCount}, Remaining: ${selectedIds.length - successCount - failCount}`);
+                alert(`Download cancelled!\n\nCompleted: ${successCount}\nFailed: ${failCount}\nCancelled: ${selectedIds.length - successCount - failCount}`);
             } else {
-                alert(`Download complete with errors. Success: ${successCount}, Failed: ${failCount}`);
+                addLog(`🎉 Download complete. Success: ${successCount}, Failed: ${failCount}`);
+                if (failCount === 0) {
+                    alert('All files downloaded successfully!');
+                } else {
+                    alert(`Download complete with errors. Success: ${successCount}, Failed: ${failCount}`);
+                }
             }
 
         } catch (error) {
@@ -189,7 +202,13 @@ const DownloadPage = () => {
         } finally {
             setIsDownloading(false);
             setDownloadProgress({ current: 0, total: 0 });
+            cancelDownloadRef.current = false;
         }
+    };
+
+    const handleCancelDownload = () => {
+        cancelDownloadRef.current = true;
+        addLog('🛑 Cancelling download...');
     };
 
     // --- Round Trip Monitoring ---
@@ -489,6 +508,15 @@ const DownloadPage = () => {
                                 </div>
 
                                 <button
+                                    className="btn btn-outline btn-sm gap-2"
+                                    onClick={() => setSelectedIds(results.map(r => r.Id))}
+                                    disabled={results.length === 0}
+                                    title="Selecionar todos os documentos encontrados"
+                                >
+                                    ☑️ Selecionar Todos ({results.length})
+                                </button>
+
+                                <button
                                     className="btn btn-primary gap-2"
                                     disabled={selectedIds.length === 0 || !destinationHandle || isDownloading}
                                     onClick={handleBulkDownload}
@@ -502,6 +530,15 @@ const DownloadPage = () => {
                                         ? `Baixando (${downloadProgress.current}/${downloadProgress.total})`
                                         : 'Baixar Selecionados'}
                                 </button>
+
+                                {isDownloading && (
+                                    <button
+                                        className="btn btn-error gap-2"
+                                        onClick={handleCancelDownload}
+                                    >
+                                        <FaStop /> Cancelar
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>

@@ -62,12 +62,12 @@ export const docuwareService = {
     },
 
     // 4. Search Documents with Filters
-    searchDocuments: async (cabinetId, filters = []) => {
+    searchDocuments: async (cabinetId, filters = [], resultLimit = 1000) => {
         // If no filters, just list documents
         if (filters.length === 0) {
             const response = await api.get(`/FileCabinets/${cabinetId}/Documents`, {
                 params: {
-                    count: 1000,
+                    count: resultLimit,
                     calculateTotalCount: true
                 }
             });
@@ -109,7 +109,7 @@ export const docuwareService = {
             {
                 params: {
                     dialogId: searchDialog.Id,
-                    count: 1000  // Increased from 50 to get more results
+                    count: resultLimit  // Use the dynamic result limit
                 }
             }
         );
