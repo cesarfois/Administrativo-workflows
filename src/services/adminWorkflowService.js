@@ -80,15 +80,71 @@ export const adminWorkflowService = {
      */
     getWorkflows: async () => {
         try {
-            console.log('[AdminWorkflowService] Fetching ALL workflows (Controller endpoint)...');
+            console.log('[AdminWorkflowService] Fetching ALL workflows with PAGINATION...');
 
-            // Explicitly use the Controller endpoint for Admin view
-            const response = await adminWorkflowApi.get('/ControllerWorkflows');
-            console.log('[AdminWorkflowService] ControllerWorkflows endpoint response:', response.status);
+            // Helper function to fetch all pages from an endpoint
+            const fetchAllPages = async (endpointBase) => {
+                let allItems = [];
+                let start = 0;
+                const count = 1000; // Reasonable page size
+                let hasMore = true;
+                let page = 1;
 
-            const workflows = response.data.Workflow || [];
-            console.log(`[AdminWorkflowService] ✅ Found ${workflows.length} workflows`);
-            return workflows;
+                while (hasMore) {
+                    try {
+                        const separator = endpointBase.includes('?') ? '&' : '?';
+                        const url = `${endpointBase}${separator}Count=${count}&Start=${start}`;
+
+                        console.log(`[AdminWorkflowService] Fetching page ${page} from ${endpointBase}...`);
+                        const response = await adminWorkflowApi.get(url);
+
+                        const items = response.data.Workflow || [];
+
+                        if (items.length > 0) {
+                            allItems = [...allItems, ...items];
+                            start += items.length;
+                            page++;
+
+                            // If we got fewer items than requested, we reached the end
+                            if (items.length < count) {
+                                hasMore = false;
+                            }
+                        } else {
+                            hasMore = false;
+                        }
+                    } catch (error) {
+                        console.warn(`[AdminWorkflowService] Error fetching page ${page} from ${endpointBase}:`, error.message);
+                        hasMore = false;
+                    }
+                }
+                return allItems;
+            };
+
+            // Fetch from all relevant endpoints to ensure we see inactive/published workflows too
+            const [controllerWorkflows, standardWorkflows, designerWorkflows] = await Promise.all([
+                fetchAllPages('/ControllerWorkflows'),
+                fetchAllPages('/Workflows'),
+                fetchAllPages('/DesignerWorkflows')
+            ]);
+
+            console.log(`[AdminWorkflowService] Controller Endpoint: Found ${controllerWorkflows.length}`);
+            console.log(`[AdminWorkflowService] Standard Endpoint: Found ${standardWorkflows.length}`);
+            console.log(`[AdminWorkflowService] Designer Endpoint: Found ${designerWorkflows.length}`);
+
+            // Merge and remove duplicates by ID
+            const workflowMap = new Map();
+
+            // Order matters: Designer last because it often has better metadata (Names) if others are limited
+            [...controllerWorkflows, ...standardWorkflows, ...designerWorkflows].forEach(wf => {
+                if (!workflowMap.has(wf.Id)) {
+                    workflowMap.set(wf.Id, wf);
+                }
+            });
+
+            const allWorkflows = Array.from(workflowMap.values());
+            console.log(`[AdminWorkflowService] ✅ Total Unique Workflows Merged: ${allWorkflows.length}`);
+
+            return allWorkflows;
 
         } catch (error) {
             console.error('[AdminWorkflowService] Error fetching admin workflows:', error);
@@ -115,9 +171,10 @@ export const adminWorkflowService = {
 
     /**
      * Get ALL workflows with their active instance counts (admin access)
+     * @param {AbortSignal} [signal] - Optional abort signal to cancel the operation
      * @returns {Promise<Array>} Array of ALL workflow objects with counts
      */
-    getWorkflowsWithCounts: async () => {
+    getWorkflowsWithCounts: async (signal) => {
         try {
             console.log('[AdminWorkflowService] Fetching ALL workflows with instance counts (ADMIN ACCESS)...');
 
@@ -129,6 +186,8 @@ export const adminWorkflowService = {
                 return [];
             }
 
+            if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
             // Step 2: Fetch task counts for all workflows with concurrency control
             // We have 166+ workflows, firing all requests at once causes timeouts
             console.log(`[AdminWorkflowService] Fetching task counts for ${workflows.length} workflows...`);
@@ -138,6 +197,11 @@ export const adminWorkflowService = {
 
             // Process workflows in chunks to avoid overwhelming the server/browser
             for (let i = 0; i < workflows.length; i += CONCURRENCY_LIMIT) {
+                if (signal?.aborted) {
+                    console.log('[AdminWorkflowService] Operation cancelled by user/system.');
+                    throw new DOMException('Aborted', 'AbortError');
+                }
+
                 const chunk = workflows.slice(i, i + CONCURRENCY_LIMIT);
                 console.log(`[AdminWorkflowService] Processing chunk ${Math.floor(i / CONCURRENCY_LIMIT) + 1}/${Math.ceil(workflows.length / CONCURRENCY_LIMIT)}`);
 
@@ -172,5 +236,12 @@ export const adminWorkflowService = {
             console.error('[AdminWorkflowService] Error fetching workflows with counts:', error);
             throw error;
         }
+    },
+
+    /**
+     * Helper for debugging - raw GET request
+     */
+    getRaw: async (url) => {
+        return await adminWorkflowApi.get(url);
     }
 };

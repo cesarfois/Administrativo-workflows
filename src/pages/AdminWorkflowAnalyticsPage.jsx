@@ -9,43 +9,66 @@ const AdminWorkflowAnalyticsPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
-    const [showOnlyActive, setShowOnlyActive] = useState(true);
+    // Default to false to show ALL workflows (even those with 0 instances)
+    const [showOnlyActive, setShowOnlyActive] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
 
-    const fetchWorkflows = async () => {
+    const fetchWorkflows = async (signal) => {
         try {
             setError(null);
             setLoading(true);
             console.log('[AdminWorkflowAnalyticsPage] Fetching workflows with ADMIN access...');
 
-            const data = await adminWorkflowService.getWorkflowsWithCounts();
-            setWorkflows(data);
+            const data = await adminWorkflowService.getWorkflowsWithCounts(signal);
 
-            console.log(`[AdminWorkflowAnalyticsPage] ✅ Loaded ${data.length} workflows (ADMIN)`);
+            // Sort by Name A-Z by default for better visibility
+            const sortedData = data.sort((a, b) => a.name.localeCompare(b.name));
+
+            setWorkflows(sortedData);
+
+            console.log('[AdminWorkflowAnalyticsPage] Loaded ' + data.length + ' workflows (ADMIN)');
         } catch (err) {
+            if (err.name === 'AbortError') {
+                console.log('[AdminWorkflowAnalyticsPage] Fetch cancelled');
+                return;
+            }
             console.error('[AdminWorkflowAnalyticsPage] ❌ Error loading workflows:', err);
             setError(err.message || 'Erro ao carregar workflows. Verifique a configuração da API Key de administrador.');
         } finally {
-            setLoading(false);
-            setRefreshing(false);
+            // Only stop loading if not aborted (or if we want to reset UI)
+            if (!signal?.aborted) {
+                setLoading(false);
+                setRefreshing(false);
+            }
         }
     };
 
     useEffect(() => {
-        fetchWorkflows();
+        const controller = new AbortController();
+        fetchWorkflows(controller.signal);
+
+        return () => {
+            console.log('[AdminWorkflowAnalyticsPage] Unmounting/Cleanup - Cancelling fetch');
+            controller.abort();
+        };
     }, []);
 
     const handleRefresh = () => {
         setRefreshing(true);
-        fetchWorkflows();
+        fetchWorkflows(); // No signal for manual refresh, or create new one if needed, but manual usually single instance
     };
 
     const getTotalInstances = () => {
         return workflows.reduce((sum, wf) => sum + wf.activeInstanceCount, 0);
     };
 
-    const filteredWorkflows = showOnlyActive
-        ? workflows.filter(w => w.activeInstanceCount > 0)
-        : workflows;
+    // Filter logic: Active Only checkbox AND Search Term
+    const filteredWorkflows = workflows.filter(w => {
+        const matchesActive = showOnlyActive ? w.activeInstanceCount > 0 : true;
+        const matchesSearch = w.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            w.id.toLowerCase().includes(searchTerm.toLowerCase());
+        return matchesActive && matchesSearch;
+    });
 
     return (
         <div className="min-h-screen flex flex-col bg-base-200">
@@ -58,24 +81,37 @@ const AdminWorkflowAnalyticsPage = () => {
                         <FaShieldAlt className="w-6 h-6 text-error" />
                         <h1 className="text-3xl font-bold">Análise Administrativa de Workflows</h1>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <label className="cursor-pointer label gap-2">
-                            <span className="label-text font-semibold">Apenas Ativos</span>
-                            <input
-                                type="checkbox"
-                                className="toggle toggle-error"
-                                checked={showOnlyActive}
-                                onChange={() => setShowOnlyActive(!showOnlyActive)}
-                            />
-                        </label>
-                        <button
-                            onClick={handleRefresh}
-                            disabled={loading || refreshing}
-                            className={`btn btn-error btn-sm gap-2 ${refreshing ? 'loading' : ''}`}
-                        >
-                            {!refreshing && <FaSync />}
-                            Atualizar
-                        </button>
+
+                    <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                        {/* Search Input */}
+                        <input
+                            type="text"
+                            placeholder="Buscar workflow..."
+                            className="input input-bordered input-sm w-full md:w-64"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+
+                        {/* Toggles and Actions */}
+                        <div className="flex items-center gap-4">
+                            <label className="cursor-pointer label gap-2">
+                                <span className="label-text font-semibold whitespace-nowrap">Apenas Ativos</span>
+                                <input
+                                    type="checkbox"
+                                    className="toggle toggle-error"
+                                    checked={showOnlyActive}
+                                    onChange={() => setShowOnlyActive(!showOnlyActive)}
+                                />
+                            </label>
+                            <button
+                                onClick={handleRefresh}
+                                disabled={loading || refreshing}
+                                className={`btn btn-error btn-sm gap-2 ${refreshing ? 'loading' : ''}`}
+                            >
+                                {!refreshing && <FaSync />}
+                                Atualizar
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -150,49 +186,63 @@ const AdminWorkflowAnalyticsPage = () => {
                     </div>
                 )}
 
-                {/* Workflows Grid */}
+
+
+                {/* Workflows Table */}
                 {!loading && !error && filteredWorkflows.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {filteredWorkflows.map((workflow) => (
-                            <div key={workflow.id} className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow border-l-4 border-error">
-                                <div className="card-body">
-                                    <h2 className="card-title text-lg">
-                                        <FaSitemap className="text-error" />
-                                        <span className="truncate">{workflow.name}</span>
-                                    </h2>
-
-                                    {workflow.description && (
-                                        <p className="text-sm text-base-content/70 line-clamp-2 mb-2">
-                                            {workflow.description}
-                                        </p>
-                                    )}
-
-                                    <div className="divider my-2"></div>
-
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm font-semibold text-base-content/60">
-                                            Instâncias Ativas:
-                                        </span>
-                                        <div className={`badge ${workflow.activeInstanceCount > 0 ? 'badge-error' : 'badge-ghost'} badge-lg`}>
-                                            {workflow.activeInstanceCount}
-                                        </div>
-                                    </div>
-
-                                    {workflow.activeInstanceCount > 0 && (
-                                        <div className="mt-2">
-                                            <progress
-                                                className="progress progress-error w-full"
-                                                value={workflow.activeInstanceCount}
-                                                max={getTotalInstances()}
-                                            ></progress>
-                                            <p className="text-xs text-center mt-1 text-base-content/50">
-                                                {((workflow.activeInstanceCount / getTotalInstances()) * 100).toFixed(1)}% do total global
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                    <div className="overflow-x-auto shadow-xl rounded-lg border border-base-200 bg-base-100">
+                        <table className="table table-zebra w-full">
+                            {/* head */}
+                            <thead className="bg-base-200">
+                                <tr>
+                                    <th>Workflow</th>
+                                    <th>ID</th>
+                                    <th className="text-center">Instâncias Ativas</th>
+                                    <th>Distribuição</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredWorkflows.map((workflow) => (
+                                    <tr key={workflow.id} className="hover">
+                                        <td>
+                                            <div className="flex items-center space-x-3">
+                                                <div className="avatar placeholder">
+                                                    <div className="mask mask-squircle w-10 h-10 bg-error/10 text-error">
+                                                        <FaSitemap />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="font-bold">{workflow.name}</div>
+                                                    <div className="text-sm opacity-50 truncate max-w-md" title={workflow.description}>
+                                                        {workflow.description || 'Sem descrição'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="font-mono text-xs opacity-50">{workflow.id.substring(0, 8)}...</td>
+                                        <td className="text-center">
+                                            <div className={`badge badge-lg ${workflow.activeInstanceCount > 0 ? 'badge-error text-white' : 'badge-ghost'}`}>
+                                                {workflow.activeInstanceCount}
+                                            </div>
+                                        </td>
+                                        <td className="w-48">
+                                            {workflow.activeInstanceCount > 0 && (
+                                                <div className="flex flex-col gap-1">
+                                                    <progress
+                                                        className="progress progress-error w-full"
+                                                        value={workflow.activeInstanceCount}
+                                                        max={getTotalInstances()}
+                                                    ></progress>
+                                                    <span className="text-xs text-center opacity-60">
+                                                        {((workflow.activeInstanceCount / getTotalInstances()) * 100).toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 )}
 
