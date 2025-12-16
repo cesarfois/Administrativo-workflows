@@ -3,6 +3,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import WorkflowAnalyticsPage from './pages/WorkflowAnalyticsPage';
+import AdminWorkflowAnalyticsPage from './pages/AdminWorkflowAnalyticsPage';
 import SemaforosPage from './pages/SemaforosPage';
 import DownloadPage from './pages/DownloadPage';
 
@@ -38,6 +40,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <AnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workflow-analytics"
+            element={
+              <ProtectedRoute>
+                <WorkflowAnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin-workflow-analytics"
+            element={
+              <ProtectedRoute>
+                <AdminWorkflowAnalyticsPage />
               </ProtectedRoute>
             }
           />

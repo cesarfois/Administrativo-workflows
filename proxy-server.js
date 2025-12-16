@@ -25,11 +25,16 @@ const proxyOptions = {
     router: (req) => {
         // Get the target URL from the custom header
         const targetUrl = req.headers['x-target-url'];
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [Proxy] Incoming request: ${req.method} ${req.url}`);
+        console.log(`[${timestamp}] [Proxy] Headers:`, JSON.stringify(req.headers, null, 2));
+
         if (!targetUrl) {
-            console.error(`[Proxy] Missing X-Target-URL header on ${req.method} ${req.url}`);
+            console.error(`[${timestamp}] [Proxy] ❌ Missing X-Target-URL header on ${req.method} ${req.url}`);
             // For non-OPTIONS requests, this is fatal
             throw new Error('Missing X-Target-URL header');
         }
+        console.log(`[${timestamp}] [Proxy] ✅ Routing to: ${targetUrl}`);
         return targetUrl; // The proxy will forward to this URL
     },
     changeOrigin: true,
@@ -37,14 +42,20 @@ const proxyOptions = {
     onProxyReq: (proxyReq, req, res) => {
         // Log forwarding
         const target = req.headers['x-target-url'];
-        console.log(`[Proxy] Forwarding ${req.method} ${req.originalUrl} -> ${target}`);
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [Proxy] 📤 Forwarding ${req.method} ${req.originalUrl} -> ${target}`);
 
         // Remove the custom header before forwarding to the target (cleanliness)
         proxyReq.removeHeader('x-target-url');
         proxyReq.removeHeader('origin'); // Let changeOrigin handle this
     },
+    onProxyRes: (proxyRes, req, res) => {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] [Proxy] 📥 Response ${proxyRes.statusCode} for ${req.method} ${req.url}`);
+    },
     onError: (err, req, res) => {
-        console.error('[Proxy] Error:', err.message);
+        const timestamp = new Date().toISOString();
+        console.error(`[${timestamp}] [Proxy] ❌ Error:`, err.message);
         res.status(500).json({ error: 'Proxy Error', details: err.message });
     }
 };
