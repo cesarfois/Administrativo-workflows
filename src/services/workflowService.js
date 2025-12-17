@@ -80,6 +80,7 @@ workflowApi.interceptors.response.use(
     }
 );
 
+
 export const workflowService = {
     /**
      * Get all workflows with administrative access
@@ -127,26 +128,120 @@ export const workflowService = {
      * @param {string} workflowId - The workflow ID
      * @returns {Promise<Array>} Array of task objects
      */
+    /**
+     * Helper to fetch all pages of a collection using robust Link following
+     * Extracts relative path by searching for resource keywords.
+     */
+    getAllPages: async (url, config = {}) => {
+        let allItems = [];
+        let nextLink = url;
+        let pageCount = 0;
+
+        // Ensure config.params exists
+        if (!config.params) config.params = {};
+        config.params.Count = 1000; // Prefer large pages if possible
+
+        try {
+            while (nextLink) {
+                pageCount++;
+                console.log(`[WorkflowService] Fetching page ${pageCount}: ${nextLink}`);
+
+                let requestUrl = nextLink;
+
+                // Handle absolute URLs or full paths in 'nextLink'
+                // We need to convert them to be relative to our partial baseURL (/DocuWare/Platform/Workflow)
+                // OR relative to the root if we were using a root client. 
+                // But we are using 'workflowApi' which has baseURL set.
+
+                if (nextLink.toLowerCase().startsWith('http') || nextLink.startsWith('/')) {
+                    // Strategy: Find the known resource segment and extract from there
+                    const keywords = ['/Workflows', '/ControllerWorkflows'];
+                    let relativePath = null;
+
+                    for (const kw of keywords) {
+                        // Case insensitive search
+                        const idx = nextLink.toLowerCase().indexOf(kw.toLowerCase());
+                        if (idx !== -1) {
+                            // Extract from the keyword, retaining case and query params
+                            relativePath = nextLink.substring(idx);
+                            break;
+                        }
+                    }
+
+                    if (relativePath) {
+                        requestUrl = relativePath;
+                        console.log(`[WorkflowService] Extracted relative path: ${requestUrl}`);
+                    } else {
+                        console.warn('[WorkflowService] Could not find resource keyword in next link, using as is (risky):', nextLink);
+                        // If we can't match, maybe we should try to strip the common base path manually?
+                        // But the keyword search is safest. 
+                    }
+                }
+
+                // Make the request
+                const response = await workflowApi.get(requestUrl, config);
+
+                // Collect items
+                const tasks = response.data.Task || [];
+                allItems = [...allItems, ...tasks];
+                console.log(`[WorkflowService] Page ${pageCount} returned ${tasks.length} items. Total so far: ${allItems.length}`);
+
+                // Determine next link
+                const links = response.data.Link || response.data.Links;
+                if (links && Array.isArray(links)) {
+                    const nextLinkObj = links.find(l => l.Rel && l.Rel.toLowerCase() === 'next');
+                    if (nextLinkObj) {
+                        nextLink = nextLinkObj.Href;
+                        // IMPORTANT: Clear Loop params for subsequent requests 
+                        // because the 'next' link usually contains the params (Start/Count) already embedded.
+                        config.params = {};
+                    } else {
+                        nextLink = null;
+                    }
+                } else {
+                    nextLink = null;
+                }
+
+                // Safety break
+                if (pageCount > 200) {
+                    console.warn('[WorkflowService] Reached max page limit (200), stopping.');
+                    break;
+                }
+            }
+            return allItems;
+        } catch (error) {
+            console.error('[WorkflowService] Error in pagination:', error);
+            if (allItems.length > 0) {
+                console.warn('[WorkflowService] Pagination failed but retrieved partial results:', allItems.length);
+                return allItems;
+            }
+            throw error;
+        }
+    },
+
+    /**
+     * Get active tasks/instances for a specific workflow
+     * @param {string} workflowId - The workflow ID
+     * @returns {Promise<Array>} Array of task objects
+     */
     getWorkflowTasks: async (workflowId) => {
         try {
             console.log(`[WorkflowService] Fetching tasks for workflow ${workflowId}...`);
 
-            // Try user tasks endpoint first
+            // Try controller tasks endpoint FIRST (Administrative view)
             try {
-                const response = await workflowApi.get(`/Workflows/${workflowId}/Tasks`);
-                const tasks = response.data.Task || [];
-                console.log(`[WorkflowService] Found ${tasks.length} active tasks for workflow ${workflowId}`);
+                const tasks = await workflowService.getAllPages(`/ControllerWorkflows/${workflowId}/Tasks`);
+                console.log(`[WorkflowService] Found ${tasks.length} tasks via controller endpoint for workflow ${workflowId}`);
                 return tasks;
-            } catch (userTasksError) {
-                console.warn(`[WorkflowService] User tasks endpoint failed for ${workflowId}, trying controller endpoint...`);
+            } catch (controllerError) {
+                console.warn(`[WorkflowService] Controller endpoint failed for ${workflowId}, trying user endpoint...`);
 
-                // Try controller tasks endpoint as fallback
+                // Try user tasks endpoint as fallback
                 try {
-                    const response = await workflowApi.get(`/ControllerWorkflows/${workflowId}/Tasks`);
-                    const tasks = response.data.Task || [];
-                    console.log(`[WorkflowService] Found ${tasks.length} tasks via controller endpoint for workflow ${workflowId}`);
+                    const tasks = await workflowService.getAllPages(`/Workflows/${workflowId}/Tasks`);
+                    console.log(`[WorkflowService] Found ${tasks.length} active tasks for workflow ${workflowId} (User view)`);
                     return tasks;
-                } catch (controllerTasksError) {
+                } catch (userTasksError) {
                     console.warn(`[WorkflowService] Both endpoints failed for workflow ${workflowId}`);
                     return []; // Return empty array instead of failing
                 }

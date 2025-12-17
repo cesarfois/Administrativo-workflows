@@ -154,15 +154,75 @@ export const adminWorkflowService = {
 
     /**
      * Get active tasks/instances for a specific workflow (admin access)
+     * WITH PAGINATION to handle workflows with >50 tasks
      * @param {string} workflowId - The workflow ID
      * @returns {Promise<Array>} Array of task objects
      */
     getWorkflowTasks: async (workflowId) => {
         try {
-            // Use ControllerWorkflows tasks endpoint
-            const response = await adminWorkflowApi.get(`/ControllerWorkflows/${workflowId}/Tasks`);
-            const tasks = response.data.Task || [];
-            return tasks;
+            console.log(`[AdminWorkflowService] Fetching tasks for workflow ${workflowId}...`);
+
+            let allTasks = [];
+            let nextLink = `/ControllerWorkflows/${workflowId}/Tasks`;
+            let pageCount = 0;
+            const maxPages = 200; // Safety limit
+
+            // Request large page size
+            let params = { Count: 1000 };
+
+            while (nextLink && pageCount < maxPages) {
+                pageCount++;
+                console.log(`[AdminWorkflowService] Fetching page ${pageCount} for workflow ${workflowId}...`);
+
+                // Determine request URL
+                let requestUrl = nextLink;
+
+                // If nextLink is absolute (from Link header), extract relative path
+                if (nextLink.toLowerCase().startsWith('http') || nextLink.startsWith('/')) {
+                    // Find resource keyword and extract from there
+                    const keywords = ['/ControllerWorkflows', '/Workflows'];
+                    let relativePath = null;
+
+                    for (const kw of keywords) {
+                        const idx = nextLink.toLowerCase().indexOf(kw.toLowerCase());
+                        if (idx !== -1) {
+                            relativePath = nextLink.substring(idx);
+                            break;
+                        }
+                    }
+
+                    if (relativePath) {
+                        requestUrl = relativePath;
+                        console.log(`[AdminWorkflowService] Extracted relative path: ${requestUrl}`);
+                    }
+                }
+
+                // Make request
+                const response = await adminWorkflowApi.get(requestUrl, { params });
+                const tasks = response.data.Task || [];
+                allTasks = [...allTasks, ...tasks];
+
+                console.log(`[AdminWorkflowService] Page ${pageCount} returned ${tasks.length} tasks. Total so far: ${allTasks.length}`);
+
+                // Check for next link
+                const links = response.data.Link || response.data.Links;
+                if (links && Array.isArray(links)) {
+                    const nextLinkObj = links.find(l => l.Rel && l.Rel.toLowerCase() === 'next');
+                    if (nextLinkObj) {
+                        nextLink = nextLinkObj.Href;
+                        // Clear params as next link contains them
+                        params = {};
+                    } else {
+                        nextLink = null;
+                    }
+                } else {
+                    nextLink = null;
+                }
+            }
+
+            console.log(`[AdminWorkflowService] ✅ Fetched ${allTasks.length} total tasks for workflow ${workflowId}`);
+            return allTasks;
+
         } catch (error) {
             console.warn(`[AdminWorkflowService] Failed to get admin tasks for ${workflowId}:`, error.message);
             return [];
