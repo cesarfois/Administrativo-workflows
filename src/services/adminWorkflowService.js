@@ -120,7 +120,7 @@ export const adminWorkflowService = {
                 return allItems;
             };
 
-            // Fetch from all relevant endpoints to ensure we see inactive/published workflows too
+            // Fetch from all relevant endpoints
             const [controllerWorkflows, standardWorkflows, designerWorkflows] = await Promise.all([
                 fetchAllPages('/ControllerWorkflows'),
                 fetchAllPages('/Workflows'),
@@ -131,14 +131,29 @@ export const adminWorkflowService = {
             console.log(`[AdminWorkflowService] Standard Endpoint: Found ${standardWorkflows.length}`);
             console.log(`[AdminWorkflowService] Designer Endpoint: Found ${designerWorkflows.length}`);
 
-            // Merge and remove duplicates by ID
+            // DEBUG: Check if DesignerWorkflows has FileCabinetId
+            if (designerWorkflows.length > 0) {
+                console.log('[AdminWorkflowService] 🔍 Sample Designer Workflow:', JSON.stringify(designerWorkflows[0], null, 2));
+            }
+
+            // Merge and accumulate properties by ID
             const workflowMap = new Map();
 
-            // Order matters: Designer last because it often has better metadata (Names) if others are limited
+            // Order matters: Designer last because it often has better metadata (Names)
             [...controllerWorkflows, ...standardWorkflows, ...designerWorkflows].forEach(wf => {
-                if (!workflowMap.has(wf.Id)) {
-                    workflowMap.set(wf.Id, wf);
+                const existing = workflowMap.get(wf.Id) || {};
+
+                // Merge strategies:
+                // 1. Accumulate all keys
+                // 2. Preserve Name if existing has it and new one doesn't
+
+                const merged = { ...existing, ...wf };
+
+                if (existing.Name && !wf.Name) {
+                    merged.Name = existing.Name;
                 }
+
+                workflowMap.set(wf.Id, merged);
             });
 
             const allWorkflows = Array.from(workflowMap.values());
@@ -149,6 +164,84 @@ export const adminWorkflowService = {
         } catch (error) {
             console.error('[AdminWorkflowService] Error fetching admin workflows:', error);
             throw new Error(`Falha ao buscar workflows administrativos. Verifique se seu usuário tem permissão de administrador.\nErro: ${error.message}`);
+        }
+    },
+
+    /**
+     * Get File Cabinet name by ID
+     * @param {string} fileCabinetId - The file cabinet GUID
+     * @returns {Promise<string|null>} File Cabinet name or null
+     */
+    /**
+     * Get ALL File Cabinets (for mapping IDs to Names)
+     * @returns {Promise<Object>} Map of ID -> Name
+     */
+    getFileCabinetMap: async () => {
+        try {
+            const authData = JSON.parse(sessionStorage.getItem('docuware_auth') || '{}');
+            const token = authData.token;
+            const targetUrl = authData.url;
+
+            if (!token || !targetUrl) {
+                console.warn('[AdminWorkflowService] Missing auth data for FC map');
+                return {};
+            }
+
+            // Fetch all file cabinets from Platform
+            const response = await axios.get('/DocuWare/Platform/FileCabinets', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/json',
+                    'x-target-url': targetUrl // CRITICAL: Required by Proxy
+                }
+            });
+
+            // Create Map: ID -> Name
+            const fcMap = {};
+            if (response.data && response.data.FileCabinet) {
+                response.data.FileCabinet.forEach(fc => {
+                    fcMap[fc.Id] = fc.Name;
+                });
+            }
+
+            console.log(`[AdminWorkflowService] Loaded ${Object.keys(fcMap).length} file cabinets for mapping`);
+            return fcMap;
+        } catch (error) {
+            console.warn(`[AdminWorkflowService] Failed to load File Cabinets: ${error.message}`);
+            return {};
+        }
+    },
+
+    // Deprecated: Single fetch replaced by bulk map
+    getFileCabinetName: async (fileCabinetId) => {
+        return null;
+    },
+
+    /**
+     * Get detailed information about a specific workflow including File Cabinet ID
+     * @param {string} workflowId - The workflow ID
+     * @returns {Promise<Object>} Workflow details with FileCabinetId and FileCabinetName
+     */
+    getWorkflowDetails: async (workflowId) => {
+        try {
+            console.log(`[AdminWorkflowService] Fetching details for workflow ${workflowId}...`);
+
+            // Get workflow details
+            const response = await adminWorkflowApi.get(`/DesignerWorkflows/${workflowId}`);
+
+            // Extract File Cabinet ID
+            const fileCabinetId = response.data.FileCabinetId || null;
+
+            // Name will be mapped in the frontend using the bulk Map
+            // console.log(`[AdminWorkflowService] ✅ Workflow ${workflowId} → FC ID: ${fileCabinetId}`);
+
+            return {
+                ...response.data,
+                FileCabinetId: fileCabinetId
+            };
+        } catch (error) {
+            console.warn(`[AdminWorkflowService] Failed to get details for workflow ${workflowId}:`, error.message);
+            return null;
         }
     },
 
@@ -232,9 +325,10 @@ export const adminWorkflowService = {
     /**
      * Get ALL workflows with their active instance counts (admin access)
      * @param {AbortSignal} [signal] - Optional abort signal to cancel the operation
+     * @param {Function} [progressCallback] - Optional callback(current, total) for progress updates
      * @returns {Promise<Array>} Array of ALL workflow objects with counts
      */
-    getWorkflowsWithCounts: async (signal) => {
+    getWorkflowsWithCounts: async (signal, progressCallback = null) => {
         try {
             console.log('[AdminWorkflowService] Fetching ALL workflows with instance counts (ADMIN ACCESS)...');
 
@@ -252,7 +346,7 @@ export const adminWorkflowService = {
             // We have 166+ workflows, firing all requests at once causes timeouts
             console.log(`[AdminWorkflowService] Fetching task counts for ${workflows.length} workflows...`);
 
-            const CONCURRENCY_LIMIT = 5; // Process 5 requests at a time
+            const CONCURRENCY_LIMIT = 10; // Increased from 5 to 10 for faster loading
             const results = [];
 
             // Process workflows in chunks to avoid overwhelming the server/browser
@@ -263,7 +357,15 @@ export const adminWorkflowService = {
                 }
 
                 const chunk = workflows.slice(i, i + CONCURRENCY_LIMIT);
-                console.log(`[AdminWorkflowService] Processing chunk ${Math.floor(i / CONCURRENCY_LIMIT) + 1}/${Math.ceil(workflows.length / CONCURRENCY_LIMIT)}`);
+                const chunkNumber = Math.floor(i / CONCURRENCY_LIMIT) + 1;
+                const totalChunks = Math.ceil(workflows.length / CONCURRENCY_LIMIT);
+
+                console.log(`[AdminWorkflowService] Processing chunk ${chunkNumber}/${totalChunks}`);
+
+                // Report progress
+                if (progressCallback) {
+                    progressCallback(i, workflows.length);
+                }
 
                 const chunkResults = await Promise.all(
                     chunk.map(async (workflow) => {
@@ -294,6 +396,60 @@ export const adminWorkflowService = {
             return results;
         } catch (error) {
             console.error('[AdminWorkflowService] Error fetching workflows with counts:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Get task counts for specific workflow IDs (selective loading)
+     * @param {Array<string>} workflowIds - Array of workflow IDs to load
+     * @param {Function} progressCallback - Optional callback(workflowId, count, current, total)
+     * @returns {Promise<Object>} Map of workflowId -> count
+     */
+    getWorkflowTaskCounts: async (workflowIds, progressCallback = null) => {
+        try {
+            console.log(`[AdminWorkflowService] Loading task counts for ${workflowIds.length} selected workflows...`);
+
+            const results = {};
+            const total = workflowIds.length;
+
+            // Process with concurrency control
+            const CONCURRENCY_LIMIT = 5;
+
+            for (let i = 0; i < workflowIds.length; i += CONCURRENCY_LIMIT) {
+                const chunk = workflowIds.slice(i, i + CONCURRENCY_LIMIT);
+
+                const chunkResults = await Promise.all(
+                    chunk.map(async (workflowId, chunkIndex) => {
+                        try {
+                            const tasks = await adminWorkflowService.getWorkflowTasks(workflowId);
+                            const count = tasks.length;
+
+                            // Report progress
+                            if (progressCallback) {
+                                const current = i + chunkIndex + 1;
+                                progressCallback(workflowId, count, current, total);
+                            }
+
+                            return { workflowId, count };
+                        } catch (error) {
+                            console.error(`[AdminWorkflowService] Failed to load tasks for ${workflowId}:`, error);
+                            return { workflowId, count: 0 };
+                        }
+                    })
+                );
+
+                // Add to results map
+                chunkResults.forEach(({ workflowId, count }) => {
+                    results[workflowId] = count;
+                });
+            }
+
+            console.log(`[AdminWorkflowService] ✅ Loaded task counts for ${workflowIds.length} workflows`);
+            return results;
+
+        } catch (error) {
+            console.error('[AdminWorkflowService] Error loading task counts:', error);
             throw error;
         }
     },
