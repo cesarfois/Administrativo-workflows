@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.17",
+    "@tanstack/query-sync-storage-persister": "^5.90.14",
+    "@tanstack/react-query": "^5.90.12",
+    "@tanstack/react-query-persist-client": "^5.90.14",
     "autoprefixer": "^10.4.22",
     "axios": "^1.13.2",
     "cors": "^2.8.5",
@@ -24,6 +27,7 @@
     "react-dom": "^19.2.0",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.10.1",
+    "react-virtuoso": "^4.17.0",
     "recharts": "^3.6.0",
     "serverless-http": "^4.0.0",
     "tailwindcss": "^4.1.17"

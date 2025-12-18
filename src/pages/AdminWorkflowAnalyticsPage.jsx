@@ -1,172 +1,107 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import Navbar from '../components/Layout/Navbar';
 import Footer from '../components/Layout/Footer';
-import { adminWorkflowService } from '../services/adminWorkflowService';
-import { FaSitemap, FaSync, FaTasks, FaShieldAlt, FaCopy } from 'react-icons/fa';
+import { useOptimizedWorkflows } from '../hooks/useOptimizedWorkflows';
+import { useFileCabinets } from '../hooks/useFileCabinets';
+import VirtualWorkflowList from '../components/Workflow/VirtualWorkflowList';
 import WorkflowDetailsModal from '../components/Dashboard/WorkflowDetailsModal';
+import { adminWorkflowService } from '../services/adminWorkflowService';
+import { FaShieldAlt, FaSync, FaSearch, FaSitemap, FaTasks } from 'react-icons/fa';
+import { useQuery } from '@tanstack/react-query';
 
 const AdminWorkflowAnalyticsPage = () => {
-    const [workflows, setWorkflows] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [countProgress, setCountProgress] = useState({ current: 0, total: 0 }); // Phase 1
-    const [enrichProgress, setEnrichProgress] = useState({ current: 0, total: 0 }); // Phase 2
-    const [loadingStatus, setLoadingStatus] = useState('Iniciando...');
-    const [error, setError] = useState(null);
-    const [refreshing, setRefreshing] = useState(false);
-    const [showOnlyActive, setShowOnlyActive] = useState(false);
+    // 1. Optimized Hook: Fetches only the lightweight index (ID + Name)
+    // Cached for 24h, loads instantly on return
+    const { workflows, isLoading, error, refetch } = useOptimizedWorkflows();
+
+    // 2. Global FC Map (for names)
+    const { fcMap } = useFileCabinets();
+
+    // 3. Optional: Global Stats (Background Sync)
+    // This fetches counts for ALL workflows to populate the "Totals" card
+    const { data: stats } = useQuery({
+        queryKey: ['workflow-global-stats'],
+        queryFn: async () => {
+            const allWithCounts = await adminWorkflowService.getWorkflowsWithCounts();
+            const totalInstances = allWithCounts.reduce((sum, wf) => sum + wf.activeInstanceCount, 0);
+
+            // Return map of counts for filtering
+            const countsMap = allWithCounts.reduce((acc, wf) => {
+                acc[wf.id] = wf.activeInstanceCount;
+                return acc;
+            }, {});
+
+            return { totalInstances, countsMap };
+        },
+        staleTime: 1000 * 60 * 15, // 15 min cache
+        placeholderData: { totalInstances: 0, countsMap: {} }
+    });
+
     const [searchTerm, setSearchTerm] = useState('');
+    const [showOnlyActive, setShowOnlyActive] = useState(true);
     const [selectedWorkflow, setSelectedWorkflow] = useState(null);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-    const fetchWorkflows = async (signal) => {
-        try {
-            setError(null);
-            setLoading(true);
-            setLoadingStatus('Contando tarefas e instâncias...');
-            setCountProgress({ current: 0, total: 0 });
-            setEnrichProgress({ current: 0, total: 0 });
-            console.log('[AdminWorkflowAnalyticsPage] Fetching workflows with ADMIN access...');
+    // 2. Local Filtering
+    const filteredWorkflows = useMemo(() => {
+        if (!workflows) return [];
 
-            const data = await adminWorkflowService.getWorkflowsWithCounts(
-                signal,
-                (current, total) => {
-                    setCountProgress({ current, total });
-                }
-            );
+        let filtered = workflows;
 
-            // Step 2: Load File Cabinet Map (One Request!)
-            setLoadingStatus('Carregando mapa de armários...');
-            console.log('[AdminWorkflowAnalyticsPage] 📂 Loading File Cabinet Map...');
-            const fcMap = await adminWorkflowService.getFileCabinetMap();
-
-            // Step 3: Enrich workflows using the Map (BATCHED to avoid timeouts)
-            // Step 3: Enrich workflows using the Map (BATCHED to avoid timeouts)
-            setLoadingStatus('Identificando armários dos workflows...');
-            setEnrichProgress({ current: 0, total: data.length });
-            console.log(`[AdminWorkflowAnalyticsPage] 📂 Enriching ${data.length} workflows...`);
-
-            const batchSize = 5;
-            const enrichedData = [];
-
-            for (let i = 0; i < data.length; i += batchSize) {
-                if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-                const batch = data.slice(i, i + batchSize);
-                const batchResults = await Promise.all(
-                    batch.map(async (workflow) => {
-                        try {
-                            const details = await adminWorkflowService.getWorkflowDetails(workflow.id);
-                            const fcId = details?.FileCabinetId || null;
-
-                            return {
-                                ...workflow,
-                                fileCabinetId: fcId,
-                                fileCabinetName: fcId ? (fcMap[fcId] || 'Unknown FC') : null
-                            };
-                        } catch (error) {
-                            return {
-                                ...workflow,
-                                fileCabinetId: null,
-                                fileCabinetName: null
-                            };
-                        }
-                    })
-                );
-                enrichedData.push(...batchResults);
-
-                // Update progress manually
-                setEnrichProgress({ current: enrichedData.length, total: data.length });
-                console.log(`[AdminWorkflowAnalyticsPage] ⏳ Processed ${enrichedData.length}/${data.length}...`);
-            }
-
-            console.log('[AdminWorkflowAnalyticsPage] 🔍 First workflow after enrichment:', enrichedData[0]);
-
-            // Map to consistent structure - using name and id from enrichedData
-            // EnrichedData has lowercase properties from getWorkflowsWithCounts + our new FC props
-            const mappedData = enrichedData.map(wf => ({
-                id: wf.id || wf.Id,
-                name: wf.name || wf.Name || wf.id || wf.Id || 'Unnamed Workflow',
-                description: wf.description || wf.Description || '',
-                activeInstanceCount: wf.activeInstanceCount || wf.InstanceCount || 0,
-                fileCabinetId: wf.fileCabinetId,
-                fileCabinetName: wf.fileCabinetName
-            }));
-
-            // Sort by Name A-Z by default for better visibility
-            const sortedData = mappedData.sort((a, b) =>
-                (a.name || '').localeCompare(b.name || '')
-            );
-
-            setWorkflows(sortedData);
-
-            console.log('[AdminWorkflowAnalyticsPage] Loaded ' + sortedData.length + ' workflows (ADMIN)');
-            console.log('[AdminWorkflowAnalyticsPage] 🔍 Sample final workflow:', sortedData[0]);
-        } catch (err) {
-            if (err.name === 'AbortError') {
-                console.log('[AdminWorkflowAnalyticsPage] Fetch cancelled');
-                return;
-            }
-            console.error('[AdminWorkflowAnalyticsPage] ❌ Error loading workflows:', err);
-            setError(err.message || 'Erro ao carregar workflows. Verifique a configuração da API Key de administrador.');
-        } finally {
-            if (!signal?.aborted) {
-                setLoading(false);
-                setRefreshing(false);
-                setCountProgress({ current: 0, total: 0 });
-                setEnrichProgress({ current: 0, total: 0 });
-            }
+        // Filter by Active Only (needs background stats)
+        if (showOnlyActive && stats?.countsMap) {
+            filtered = filtered.filter(w => (stats.countsMap[w.id] || 0) > 0);
         }
-    };
 
-    useEffect(() => {
-        const controller = new AbortController();
-        fetchWorkflows(controller.signal);
+        // Search Filter
+        if (searchTerm) {
+            filtered = filtered.filter(w =>
+                w.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                w.id.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
 
-        return () => {
-            console.log('[AdminWorkflowAnalyticsPage] Unmounting/Cleanup - Cancelling fetch');
-            controller.abort();
-        };
-    }, []);
+        return filtered;
+    }, [workflows, searchTerm, showOnlyActive, stats]);
 
-    const handleRefresh = () => {
-        setRefreshing(true);
-        fetchWorkflows();
-    };
+    // Handle Row Click (Lazy Load Tasks)
+    const handleWorkflowClick = async (rowSummary) => {
+        // rowSummary contains { id, name, activeInstanceCount, fileCabinetId, ... } passed from WorkflowRow
 
-    const getTotalInstances = () => {
-        return workflows.reduce((sum, wf) => sum + wf.activeInstanceCount, 0);
-    };
-
-    const copyToClipboard = (text) => {
-        navigator.clipboard.writeText(text);
-    };
-
-    const handleWorkflowClick = async (workflow) => {
-        setSelectedWorkflow({ ...workflow, tasks: [], loadingTasks: true });
+        // Initialize modal with available info
+        setSelectedWorkflow({
+            ...rowSummary,
+            tasks: [],
+            loadingTasks: true
+        });
         setShowDetailsModal(true);
 
         try {
-            console.log(`[AdminWorkflowAnalyticsPage] Loading tasks for workflow: ${workflow.id}`);
+            console.log(`[Admin] Loading tasks for ${rowSummary.id}...`);
+            // Fetch active tasks for the modal list
+            const tasks = await adminWorkflowService.getWorkflowTasks(rowSummary.id);
 
-            // FC ID and Name already loaded during initial fetch
-            const fileCabinetId = workflow.fileCabinetId;
-            const fileCabinetName = workflow.fileCabinetName;
+            // Should we ensure we have the FileCabinetId? 
+            // WorkflowRow passes it if loaded. If not, we might want to fetch details here.
+            let fcId = rowSummary.fileCabinetId;
+            if (!fcId) {
+                const details = await adminWorkflowService.getWorkflowDetails(rowSummary.id);
+                fcId = details.FileCabinetId;
+            }
 
-            console.log(`[AdminWorkflowAnalyticsPage] 📂 Using FC: ${fileCabinetName} (${fileCabinetId})`);
-
-            const tasks = await adminWorkflowService.getWorkflowTasks(workflow.id);
-            console.log(`[AdminWorkflowAnalyticsPage] Loaded ${tasks.length} tasks for ${workflow.id}`);
-
-            // Pass File Cabinet info to modal
-            setSelectedWorkflow({
-                ...workflow,
-                tasks,
+            setSelectedWorkflow(prev => ({
+                ...prev,
+                fileCabinetId: fcId,
+                tasks: tasks,
+                loadingTasks: false
+            }));
+        } catch (err) {
+            console.error('Error loading tasks:', err);
+            setSelectedWorkflow(prev => ({
+                ...prev,
                 loadingTasks: false,
-                fileCabinetId: fileCabinetId,
-                fileCabinetName: fileCabinetName
-            });
-        } catch (error) {
-            console.error('[AdminWorkflowAnalyticsPage] Error loading tasks:', error);
-            setSelectedWorkflow({ ...workflow, tasks: [], loadingTasks: false, error: error.message });
+                error: 'Falha ao carregar tarefas.'
+            }));
         }
     };
 
@@ -175,254 +110,124 @@ const AdminWorkflowAnalyticsPage = () => {
         setSelectedWorkflow(null);
     };
 
-    // Filter logic
-    const filteredWorkflows = workflows.filter(w => {
-        const name = w.name || w.id;
-        const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            w.id.toLowerCase().includes(searchTerm.toLowerCase());
-
-        const matchesActive = showOnlyActive ? w.activeInstanceCount > 0 : true;
-
-        return matchesSearch && matchesActive;
-    });
-
     return (
         <div className="min-h-screen flex flex-col bg-base-200">
             <Navbar />
 
-            <main className="flex-1 container mx-auto p-4">
-                {/* Header Section */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+            <main className="flex-1 container mx-auto p-4 flex flex-col h-[calc(100vh-80px)]">
+                {/* Header */}
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 flex-none">
                     <div className="flex items-center gap-3">
                         <FaShieldAlt className="w-6 h-6 text-error" />
-                        <h1 className="text-3xl font-bold">Análise Administrativa de Workflows</h1>
+                        <h1 className="text-2xl font-bold">Monitoramento de Workflows (Otimizado)</h1>
                     </div>
 
-                    <button
-                        onClick={handleRefresh}
-                        disabled={loading || refreshing}
-                        className={`btn btn-error btn-sm gap-2 ${refreshing ? 'loading' : ''}`}
-                    >
-                        {!refreshing && !loading && <FaSync />}
-                        Atualizar
-                    </button>
-                </div>
-
-                {/* Admin Warning Banner */}
-                <div className="alert alert-warning shadow-lg mb-6">
-                    <FaShieldAlt className="w-5 h-5" />
-                    <div>
-                        <h3 className="font-bold">⚠️ Acesso Administrativo Global</h3>
-                        <div className="text-sm">
-                            Esta visão utiliza suas credenciais de usuário para acessar os endpoints administrativos do sistema.
-                        </div>
-                    </div>
-                </div>
-
-                {/* Loading State */}
-                {loading && (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <span className="loading loading-spinner loading-lg text-error mb-4"></span>
-                        <p className="text-lg font-bold mb-2">Carregando dados globais...</p>
-
-                        {/* Phase 1: Counting Tasks */}
-                        {countProgress.total > 0 && (
-                            <div className="w-full max-w-md mb-4 bg-base-100 p-3 rounded-lg shadow-sm">
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="font-semibold">Fase 1: Contando Tarefas</span>
-                                    <span className="font-mono">{countProgress.current}/{countProgress.total} workflows</span>
-                                </div>
-                                <progress
-                                    className={`progress w-full ${countProgress.current === countProgress.total ? 'progress-success' : 'progress-error'}`}
-                                    value={countProgress.current}
-                                    max={countProgress.total}
-                                ></progress>
-                            </div>
-                        )}
-
-                        {/* Phase 2: Enriching with FC Maps */}
-                        {enrichProgress.total > 0 && (
-                            <div className="w-full max-w-md bg-base-100 p-3 rounded-lg shadow-sm">
-                                <div className="flex justify-between text-sm mb-1">
-                                    <span className="font-semibold">Fase 2: Identificando Armários</span>
-                                    <span className="font-mono">{enrichProgress.current}/{enrichProgress.total}</span>
-                                </div>
-                                <progress
-                                    className="progress progress-info w-full"
-                                    value={enrichProgress.current}
-                                    max={enrichProgress.total}
-                                ></progress>
-                                <p className="text-xs text-center mt-2 opacity-70">
-                                    {Math.round((enrichProgress.current / enrichProgress.total) * 100)}% processado
-                                </p>
-                            </div>
-                        )}
-
-                        {countProgress.total === 0 && enrichProgress.total === 0 && (
-                            <p className="text-sm opacity-70">Iniciando contagem de tarefas...</p>
-                        )}
-                    </div>
-                )}
-
-                {/* Error State */}
-                {error && !loading && (
-                    <div className="alert alert-error shadow-lg mb-6">
-                        <div>
-                            <h3 className="font-bold">Erro ao carregar workflows (Admin)</h3>
-                            <div className="text-sm">{error}</div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Content */}
-                {!loading && !error && workflows.length > 0 && (
-                    <>
-                        {/* Summary Cards */}
-                        <div className="stats shadow mb-6 w-full border-2 border-error">
-                            <div className="stat">
-                                <div className="stat-figure text-error">
-                                    <FaSitemap className="w-8 h-8" />
-                                </div>
-                                <div className="stat-title">Total de Workflows</div>
-                                <div className="stat-value text-error">{filteredWorkflows.length}</div>
-                                <div className="stat-desc">
-                                    {showOnlyActive
-                                        ? `${filteredWorkflows.length} ativos de ${workflows.length} total`
-                                        : 'Disponíveis no sistema'
-                                    }
-                                </div>
-                            </div>
-
-                            <div className="stat">
-                                <div className="stat-figure text-warning">
-                                    <FaTasks className="w-8 h-8" />
-                                </div>
-                                <div className="stat-title">Instâncias Ativas</div>
-                                <div className="stat-value text-warning">{getTotalInstances()}</div>
-                                <div className="stat-desc">Total de tarefas pendentes</div>
-                            </div>
-                        </div>
-
-                        {/* Search and Filter */}
-                        <div className="flex flex-col md:flex-row items-center gap-4 mb-6">
-                            <input
-                                type="text"
-                                placeholder="Buscar workflow..."
-                                className="input input-bordered input-sm w-full md:w-64"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                            <label className="cursor-pointer label gap-2">
-                                <span className="label-text font-semibold whitespace-nowrap">Apenas Ativos</span>
+                    <div className="flex gap-2 w-full md:w-auto">
+                        {/* Active Only Toggle */}
+                        <div className="form-control">
+                            <label className="label cursor-pointer gap-2">
+                                <span className="label-text font-semibold text-xs uppercase tracking-wide">Apenas Ativos</span>
                                 <input
                                     type="checkbox"
-                                    className="toggle toggle-error"
+                                    className="toggle toggle-primary toggle-sm"
                                     checked={showOnlyActive}
-                                    onChange={() => setShowOnlyActive(!showOnlyActive)}
+                                    onChange={(e) => setShowOnlyActive(e.target.checked)}
                                 />
                             </label>
                         </div>
 
-                        {/* Workflows Table */}
-                        <div className="overflow-x-auto shadow-xl rounded-lg border border-base-200 bg-base-100">
-                            <table className="table table-zebra w-full">
-                                <thead className="bg-base-200">
-                                    <tr>
-                                        <th>Workflow</th>
-                                        <th>ID do Workflow</th>
-                                        <th>Armário</th>
-                                        <th>GUID do Armário</th>
-                                        <th className="text-center">Instâncias Ativas</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredWorkflows.map((workflow) => (
-                                        <tr
-                                            key={workflow.id}
-                                            onClick={() => handleWorkflowClick(workflow)}
-                                            className="hover:bg-base-200 cursor-pointer transition-colors"
-                                        >
-                                            <td>
-                                                <div className="flex items-center space-x-3">
-                                                    <div className="avatar placeholder">
-                                                        <div className="mask mask-squircle w-10 h-10 bg-error/10 text-error">
-                                                            <FaSitemap />
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="font-bold">{workflow.name}</div>
-                                                        <div className="text-sm opacity-50 truncate max-w-md" title={workflow.description}>
-                                                            {workflow.description || 'Sem descrição'}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div className="flex items-center gap-2">
-                                                    <code className="text-xs bg-base-200 px-2 py-1 rounded">{workflow.id}</code>
-                                                    <button
-                                                        className="btn btn-ghost btn-xs"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            copyToClipboard(workflow.id);
-                                                        }}
-                                                        title="Copiar ID"
-                                                    >
-                                                        <FaCopy />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                {workflow.fileCabinetName ? (
-                                                    <span className="font-medium">{workflow.fileCabinetName}</span>
-                                                ) : (
-                                                    <span className="text-base-content/50 text-xs">N/A</span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                {workflow.fileCabinetId ? (
-                                                    <code className="text-xs bg-base-200 px-2 py-1 rounded">
-                                                        {workflow.fileCabinetId}
-                                                    </code>
-                                                ) : (
-                                                    <span className="text-base-content/50 text-xs">N/A</span>
-                                                )}
-                                            </td>
-                                            <td className="text-center">
-                                                <div className={`badge badge-lg ${workflow.activeInstanceCount > 0 ? 'badge-error text-white' : 'badge-ghost'}`}>
-                                                    {workflow.activeInstanceCount}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        <div className="relative w-full md:w-64">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <FaSearch className="text-gray-400" />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Buscar workflow..."
+                                className="input input-bordered pl-10 w-full"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
                         </div>
-                    </>
-                )}
 
-                {/* Empty State */}
-                {!loading && !error && workflows.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-20">
-                        <FaSitemap className="w-20 h-20 text-base-content/20 mb-4" />
-                        <h2 className="text-2xl font-bold text-base-content/60 mb-2">
-                            Nenhum Workflow Encontrado
-                        </h2>
-                        <p className="text-base-content/50">
-                            Não há workflows disponíveis no sistema.
-                        </p>
+                        <button
+                            onClick={() => refetch()}
+                            className={`btn btn-square btn-ghost ${isLoading ? 'loading' : ''}`}
+                            title="Recarregar índice"
+                        >
+                            {!isLoading && <FaSync />}
+                        </button>
                     </div>
-                )}
+                </div>
+
+
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 flex-none">
+                    <div className="stat bg-base-100 shadow rounded-box border border-base-200">
+                        <div className="stat-figure text-primary">
+                            <FaSitemap className="w-8 h-8 opacity-50" />
+                        </div>
+                        <div className="stat-title">Workflows Listados</div>
+                        <div className="stat-value text-primary">{filteredWorkflows.length}</div>
+                        <div className="stat-desc">De um total de {workflows?.length || 0} indexados</div>
+                    </div>
+
+                    <div className="stat bg-base-100 shadow rounded-box border border-base-200">
+                        <div className="stat-figure text-secondary">
+                            <FaTasks className="w-8 h-8 opacity-50" />
+                        </div>
+                        <div className="stat-title">Instâncias Ativas</div>
+                        <div className="stat-value text-secondary">
+                            {stats?.totalInstances > 0 ? (
+                                stats.totalInstances.toLocaleString()
+                            ) : (
+                                <span className="loading loading-dots loading-md"></span>
+                            )}
+                        </div>
+                        <div className="stat-desc">Total de tarefas pendentes</div>
+                    </div>
+                </div>
+
+                {/* Main Content Area (Virtualized List) */}
+                <div className="flex-1 bg-base-100 rounded-box shadow-lg border border-base-200 overflow-hidden flex flex-col" style={{ minHeight: '500px' }}>
+                    {/* Status Bar */}
+                    <div className="bg-base-200 px-4 py-2 text-xs font-mono opacity-70 flex justify-end flex-none">
+                        <span>Exibindo: {filteredWorkflows.length}</span>
+                    </div>
+
+                    {/* Virtual List */}
+                    <div className="flex-1 min-h-0">
+                        {isLoading && workflows.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center">
+                                <span className="loading loading-spinner loading-lg text-primary"></span>
+                                <p className="mt-4 text-opacity-70">Carregando índice mestre...</p>
+                            </div>
+                        ) : error ? (
+                            <div className="p-8 text-center text-error">
+                                <h3 className="font-bold">Erro ao carregar índice</h3>
+                                <p>{error.message}</p>
+                                <button onClick={() => refetch()} className="btn btn-sm btn-outline btn-error mt-4">Tentar novamente</button>
+                            </div>
+                        ) : (
+                            <VirtualWorkflowList
+                                workflows={filteredWorkflows}
+                                fcMap={fcMap}
+                                onRowClick={handleWorkflowClick}
+                            />
+                        )}
+                    </div>
+                </div>
             </main>
 
+            {/* Modal */}
+            {selectedWorkflow && (
+                <WorkflowDetailsModal
+                    workflow={selectedWorkflow}
+                    isOpen={showDetailsModal}
+                    onClose={handleCloseModal}
+                />
+            )}
             <Footer />
-
-            {/* Workflow Details Modal */}
-            <WorkflowDetailsModal
-                workflow={selectedWorkflow}
-                isOpen={showDetailsModal}
-                onClose={handleCloseModal}
-            />
         </div>
     );
 };

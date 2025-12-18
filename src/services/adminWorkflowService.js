@@ -114,6 +114,13 @@ export const adminWorkflowService = {
                         }
                     } catch (error) {
                         console.warn(`[AdminWorkflowService] Error fetching page ${page} from ${endpointBase}:`, error.message);
+
+                        // Critical fix: If the first page fails, THROW so useQuery knows it failed.
+                        // Otherwise it caches [] as a success.
+                        if (page === 1) {
+                            throw error;
+                        }
+
                         hasMore = false;
                     }
                 }
@@ -252,27 +259,26 @@ export const adminWorkflowService = {
      * @returns {Promise<Array>} Array of task objects
      */
     getWorkflowTasks: async (workflowId) => {
+        let allTasks = [];
         try {
             console.log(`[AdminWorkflowService] Fetching tasks for workflow ${workflowId}...`);
 
-            let allTasks = [];
             let nextLink = `/ControllerWorkflows/${workflowId}/Tasks`;
             let pageCount = 0;
-            const maxPages = 200; // Safety limit
+            const maxPages = 500; // Cap at 250k tasks
+            const PAGE_SIZE = 500; // Smaller chunks for reliability
 
-            // Request large page size
-            let params = { Count: 1000 };
+            // Request parameters
+            let params = { Count: PAGE_SIZE };
 
             while (nextLink && pageCount < maxPages) {
                 pageCount++;
-                console.log(`[AdminWorkflowService] Fetching page ${pageCount} for workflow ${workflowId}...`);
 
                 // Determine request URL
                 let requestUrl = nextLink;
 
-                // If nextLink is absolute (from Link header), extract relative path
+                // If nextLink is absolute (from Link header), extract relative path carefully
                 if (nextLink.toLowerCase().startsWith('http') || nextLink.startsWith('/')) {
-                    // Find resource keyword and extract from there
                     const keywords = ['/ControllerWorkflows', '/Workflows'];
                     let relativePath = null;
 
@@ -283,43 +289,67 @@ export const adminWorkflowService = {
                             break;
                         }
                     }
-
-                    if (relativePath) {
-                        requestUrl = relativePath;
-                        console.log(`[AdminWorkflowService] Extracted relative path: ${requestUrl}`);
-                    }
+                    if (relativePath) requestUrl = relativePath;
                 }
 
                 // Make request
                 const response = await adminWorkflowApi.get(requestUrl, { params });
                 const tasks = response.data.Task || [];
-                allTasks = [...allTasks, ...tasks];
 
-                console.log(`[AdminWorkflowService] Page ${pageCount} returned ${tasks.length} tasks. Total so far: ${allTasks.length}`);
+                if (tasks.length === 0) {
+                    break;
+                }
+
+                allTasks = [...allTasks, ...tasks];
+                console.log(`[AdminWorkflowService] Page ${pageCount} (WF: ${workflowId}) +${tasks.length} tasks. Total: ${allTasks.length}`);
 
                 // Check for next link
                 const links = response.data.Link || response.data.Links;
+                let foundNext = false;
+
                 if (links && Array.isArray(links)) {
                     const nextLinkObj = links.find(l => l.Rel && l.Rel.toLowerCase() === 'next');
                     if (nextLinkObj) {
                         nextLink = nextLinkObj.Href;
-                        // Clear params as next link contains them
-                        params = {};
-                    } else {
-                        nextLink = null;
+                        params = {}; // Clear params as link has them
+                        foundNext = true;
                     }
-                } else {
-                    nextLink = null;
+                }
+
+                // Fallback: If no next link but page is full, try manual pagination
+                if (!foundNext) {
+                    if (tasks.length === PAGE_SIZE) {
+                        console.log(`[AdminWorkflowService] ⚠️ No 'next' link but page full. Attempting manual pagination from ${allTasks.length}...`);
+                        // Construct manual next link
+                        nextLink = `/ControllerWorkflows/${workflowId}/Tasks?Start=${allTasks.length}&Count=${PAGE_SIZE}`;
+                        params = {}; // Using URL params
+                    } else {
+                        nextLink = null; // Done
+                    }
                 }
             }
 
-            console.log(`[AdminWorkflowService] ✅ Fetched ${allTasks.length} total tasks for workflow ${workflowId}`);
+            console.log(`[AdminWorkflowService] ✅ Finished fetching ${allTasks.length} tasks for ${workflowId}`);
             return allTasks;
 
         } catch (error) {
-            console.warn(`[AdminWorkflowService] Failed to get admin tasks for ${workflowId}:`, error.message);
-            return [];
+            console.warn(`[AdminWorkflowService] Error fetching tasks for ${workflowId} (Retrieved ${allTasks.length}):`, error.message);
+            // Return what we have so far instead of empty
+            return allTasks.length > 0 ? allTasks : [];
         }
+    },
+
+    /**
+     * Get lightweight index of all workflows (ID + Name only)
+     * Optimized for fast initial load and search
+     * @returns {Promise<Array<{id: string, name: string}>>}
+     */
+    getWorkflowIndex: async () => {
+        const workflows = await adminWorkflowService.getWorkflows();
+        return workflows.map(wf => ({
+            id: wf.Id,
+            name: wf.Name || wf.Id || 'Unnamed Workflow'
+        })).sort((a, b) => a.name.localeCompare(b.name));
     },
 
     /**
