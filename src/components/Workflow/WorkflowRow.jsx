@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminWorkflowService } from '../../services/adminWorkflowService';
-import { FaBoxOpen, FaTasks, FaExclamationTriangle } from 'react-icons/fa';
+import { FaBoxOpen, FaTasks, FaExclamationTriangle, FaFingerprint } from 'react-icons/fa';
 
 const WorkflowRow = ({ id, name, fcMap, onClick, style }) => {
     // Independent fetch for this row's details
@@ -40,9 +40,25 @@ const WorkflowRow = ({ id, name, fcMap, onClick, style }) => {
                 onClick={() => onClick && onClick({ id, name, ...details })}
             >
                 <div className="card-body p-4 flex flex-row items-center justify-between">
-                    <div className="flex flex-col gap-1 overflow-hidden">
-                        <h3 className="font-bold text-lg truncate" title={name}>{name}</h3>
-                        <div className="text-xs opacity-70 truncate font-mono">{id}</div>
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-lg truncate" title={name}>{name}</h3>
+                            <div
+                                className="tooltip tooltip-right before:text-[10px] before:py-1 before:px-2 before:bg-neutral/90"
+                                data-tip={`IDWF=${id}`}
+                            >
+                                <button
+                                    className="btn btn-ghost btn-xs btn-circle opacity-50 hover:opacity-100"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(id);
+                                    }}
+                                >
+                                    <FaFingerprint />
+                                </button>
+                            </div>
+                        </div>
+                        {/* Old ID div removed */}
 
                         {/* File Cabinet Info */}
                         <div className="flex items-center gap-2 text-sm mt-1">
@@ -50,9 +66,27 @@ const WorkflowRow = ({ id, name, fcMap, onClick, style }) => {
                             {isLoading ? (
                                 <span className="loading loading-dots loading-xs"></span>
                             ) : fcName ? (
-                                <span className="badge badge-ghost badge-sm border-primary/20 bg-primary/5 text-xs truncate max-w-[200px]" title={fcName}>
-                                    {fcName}
-                                </span>
+                                <>
+                                    <span className="badge badge-ghost badge-xs border-primary/20 bg-primary/5 text-[10px] opacity-80 truncate max-w-[200px]" title={fcName}>
+                                        {fcName}
+                                    </span>
+                                    {details?.fileCabinetId && (
+                                        <div
+                                            className="tooltip tooltip-right flex items-center z-50 ml-1 before:text-[10px] before:py-1 before:px-2 before:bg-neutral/90"
+                                            data-tip={`IDFC=${details.fileCabinetId}`}
+                                        >
+                                            <button
+                                                className="btn btn-ghost btn-xs btn-circle opacity-50 hover:opacity-100"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigator.clipboard.writeText(details.fileCabinetId);
+                                                }}
+                                            >
+                                                <FaFingerprint />
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
                             ) : (
                                 <span className="text-xs opacity-50">Sem armário</span>
                             )}

@@ -215,7 +215,8 @@ export const adminWorkflowService = {
             return fcMap;
         } catch (error) {
             console.warn(`[AdminWorkflowService] Failed to load File Cabinets: ${error.message}`);
-            return {};
+            // THROW the error so React Query knows it failed and doesn't cache {} as success
+            throw error;
         }
     },
 

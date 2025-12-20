@@ -3,7 +3,7 @@ import { adminWorkflowService } from '../services/adminWorkflowService';
 
 export const useFileCabinets = () => {
     const { data: fcMap, isLoading, error } = useQuery({
-        queryKey: ['file-cabinets-map'],
+        queryKey: ['file-cabinets-map-v2'],
         queryFn: async () => {
             console.log('[useFileCabinets] Fetching File Cabinet Map...');
             return await adminWorkflowService.getFileCabinetMap();

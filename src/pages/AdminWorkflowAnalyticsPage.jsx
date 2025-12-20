@@ -6,7 +6,7 @@ import { useFileCabinets } from '../hooks/useFileCabinets';
 import VirtualWorkflowList from '../components/Workflow/VirtualWorkflowList';
 import WorkflowDetailsModal from '../components/Dashboard/WorkflowDetailsModal';
 import { adminWorkflowService } from '../services/adminWorkflowService';
-import { FaShieldAlt, FaSync, FaSearch, FaSitemap, FaTasks } from 'react-icons/fa';
+import { FaShieldAlt, FaSync, FaSearch, FaSitemap, FaTasks, FaFileCsv } from 'react-icons/fa';
 import { useQuery } from '@tanstack/react-query';
 
 const AdminWorkflowAnalyticsPage = () => {
@@ -19,13 +19,17 @@ const AdminWorkflowAnalyticsPage = () => {
 
     // 3. Optional: Global Stats (Background Sync)
     // This fetches counts for ALL workflows to populate the "Totals" card
-    const { data: stats } = useQuery({
+    const { data: stats, isFetching: isStatsLoading } = useQuery({
         queryKey: ['workflow-global-stats'],
         queryFn: async () => {
-            const allWithCounts = await adminWorkflowService.getWorkflowsWithCounts();
-            const totalInstances = allWithCounts.reduce((sum, wf) => sum + wf.activeInstanceCount, 0);
+            setLoadingProgress(0);
+            const allWithCounts = await adminWorkflowService.getWorkflowsWithCounts(null, (current, total) => {
+                const pct = Math.round((current / total) * 100);
+                setLoadingProgress(pct);
+            });
 
-            // Return map of counts for filtering
+            // Restore transformation logic
+            const totalInstances = allWithCounts.reduce((sum, wf) => sum + wf.activeInstanceCount, 0);
             const countsMap = allWithCounts.reduce((acc, wf) => {
                 acc[wf.id] = wf.activeInstanceCount;
                 return acc;
@@ -41,6 +45,7 @@ const AdminWorkflowAnalyticsPage = () => {
     const [showOnlyActive, setShowOnlyActive] = useState(true);
     const [selectedWorkflow, setSelectedWorkflow] = useState(null);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [loadingProgress, setLoadingProgress] = useState(0);
 
     // 2. Local Filtering
     const filteredWorkflows = useMemo(() => {
@@ -116,7 +121,30 @@ const AdminWorkflowAnalyticsPage = () => {
 
             <main className="flex-1 container mx-auto p-4 flex flex-col h-[calc(100vh-80px)]">
                 {/* Header */}
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 flex-none">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 flex-none relative">
+                    {/* Real Progress Bar */}
+                    {(isLoading || isStatsLoading) && (
+                        <div className="absolute top-[-10px] left-0 right-0 h-2 bg-base-300 overflow-hidden rounded-full shadow-inner border border-base-content/5">
+                            <div
+                                className="h-full bg-primary transition-all duration-300 ease-out flex items-center justify-end pr-1"
+                                style={{
+                                    width: `${isLoading ? 100 : Math.max(5, loadingProgress)}%`,
+                                    backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)',
+                                    backgroundSize: '1rem 1rem'
+                                }}
+                            >
+                                {/* Only show text if there's enough space */}
+                                {loadingProgress > 10 && !isLoading && (
+                                    <span className="text-[8px] font-bold text-primary-content leading-none px-1">{loadingProgress}%</span>
+                                )}
+                            </div>
+                            {/* Indeterminate shimmer for initial index load if progress is 0 */}
+                            {isLoading && (
+                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-3">
                         <FaShieldAlt className="w-6 h-6 text-error" />
                         <h1 className="text-2xl font-bold">Monitoramento de Workflows (Otimizado)</h1>
@@ -191,8 +219,35 @@ const AdminWorkflowAnalyticsPage = () => {
                 {/* Main Content Area (Virtualized List) */}
                 <div className="flex-1 bg-base-100 rounded-box shadow-lg border border-base-200 overflow-hidden flex flex-col" style={{ minHeight: '500px' }}>
                     {/* Status Bar */}
-                    <div className="bg-base-200 px-4 py-2 text-xs font-mono opacity-70 flex justify-end flex-none">
-                        <span>Exibindo: {filteredWorkflows.length}</span>
+                    <div className="bg-base-200 px-4 py-2 flex items-center justify-end flex-none">
+                        <button
+                            className="btn btn-outline btn-primary btn-sm gap-2"
+                            onClick={() => {
+                                if (!filteredWorkflows?.length) return;
+                                const headers = ['Nome do Workflow', 'Tarefas', 'Armário', 'Workflow ID', 'Armário ID'];
+                                const rows = filteredWorkflows.map(wf => {
+                                    const count = stats?.countsMap?.[wf.id] || 0;
+                                    const fcName = fcMap?.[wf.fileCabinetId] || 'Desconhecido';
+                                    const safeName = `"${(wf.name || '').replace(/"/g, '""')}"`;
+                                    const safeFC = `"${(fcName || '').replace(/"/g, '""')}"`;
+                                    return [safeName, count, safeFC, wf.id, wf.fileCabinetId].join(',');
+                                });
+                                const csvContent = [headers.join(','), ...rows].join('\n');
+                                // Add BOM for Excel to recognize UTF-8
+                                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.setAttribute('download', `workflows_${new Date().toISOString().slice(0, 10)}.csv`);
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                            }}
+                            title="Exportar dados para CSV"
+                            disabled={!filteredWorkflows?.length}
+                        >
+                            <FaFileCsv /> Export CSV
+                        </button>
                     </div>
 
                     {/* Virtual List */}
