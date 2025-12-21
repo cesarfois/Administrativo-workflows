@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FaFileDownload, FaColumns } from 'react-icons/fa';
 import { docuwareService } from '../../services/docuwareService';
-import StatusConfig from './StatusConfig';
+import StatusConfig from '../Semaforos/StatusConfig';
 import ColumnFilter from './ColumnFilter';
 import ColumnSelector from './ColumnSelector';
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 // import Navbar from '../components/Layout/Navbar';
 // import Footer from '../components/Layout/Footer';
-import AnalyticsDashboard from '../components/Features/AnalyticsDashboard';
+import AnalyticsContainer from '../components/Analytics/AnalyticsContainer';
 import { docuwareService } from '../services/docuwareService';
 
 import { FaChartPie } from 'react-icons/fa';
@@ -48,7 +48,7 @@ const AnalyticsPage = () => {
                     <h1 className="text-3xl font-bold">Visual Analytics</h1>
                 </div>
 
-                <AnalyticsDashboard
+                <AnalyticsContainer
                     cabinetId={selectedCabinetId}
                     cabinets={cabinets}
                     onCabinetChange={handleCabinetChange}

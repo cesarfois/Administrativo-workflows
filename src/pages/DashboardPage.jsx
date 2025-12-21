@@ -1,9 +1,9 @@
 import { useState } from 'react';
 // import Navbar from '../components/Layout/Navbar';
 // import Footer from '../components/Layout/Footer';
-import SearchForm from '../components/Features/SearchForm';
-import ResultsTable from '../components/Features/ResultsTable';
-import LogConsole from '../components/Features/LogConsole';
+import SearchForm from '../components/Documents/SearchForm';
+import ResultsTable from '../components/Documents/ResultsTable';
+import LogConsole from '../components/Documents/LogConsole';
 import { docuwareService } from '../services/docuwareService';
 import { FaSearch } from 'react-icons/fa';
 

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { FaTrafficLight } from 'react-icons/fa';
 
-import TrafficLightConfigForm from '../components/Features/TrafficLightConfigForm';
-import ResultsTable from '../components/Features/ResultsTable';
-import StatusConfig from '../components/Features/StatusConfig';
+import TrafficLightConfigForm from '../components/Semaforos/TrafficLightConfigForm';
+import ResultsTable from '../components/Documents/ResultsTable';
+import StatusConfig from '../components/Semaforos/StatusConfig';
 import { useAuth } from '../context/AuthContext';
 import { controlService } from '../services/controlService';
 import { docuwareService } from '../services/docuwareService';

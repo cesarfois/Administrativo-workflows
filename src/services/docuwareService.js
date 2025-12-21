@@ -1,25 +1,47 @@
 import api from './api';
 
+/**
+ * @file docuwareService.js
+ * @description Core service layer for interacting with the DocuWare Platform API.
+ * Handles authentication context, file cabinet operations, search queries, and document manipulation.
+ * 
+ * @module services/docuwareService
+ */
+
 export const docuwareService = {
-    // 1. Get File Cabinets
+    /**
+     * @function getCabinets
+     * @description Retrieves all File Cabinets accessible to the current user.
+     * Maps to DocuWare resource: /FileCabinets
+     * 
+     * @returns {Promise<Array>} List of File Cabinet objects.
+     */
     getCabinets: async () => {
         const response = await api.get('/FileCabinets');
         return response.data.FileCabinet || [];
     },
 
-    // 2. Get File Cabinet Fields (for filtering)
+    /**
+     * @function getCabinetFields
+     * @description Fetches the schema/fields definition for a specific File Cabinet.
+     * Uses a fallback strategy: tries root metadata first, then the dedicated /Fields endpoint.
+     * 
+     * @param {string} cabinetId - The UUID of the File Cabinet.
+     * @returns {Promise<Array>} List of Field definitions (DBName, DisplayName, etc.).
+     * @throws {Error} If cabinetId is missing.
+     */
     getCabinetFields: async (cabinetId) => {
         if (!cabinetId) throw new Error("Cabinet ID is required");
         try {
+            // Strategy 1: Check if fields are embedded in the cabinet root resource
             const response = await api.get(`/FileCabinets/${cabinetId}`);
             if (response.data && response.data.Fields) {
                 return response.data.Fields;
             }
 
-            // Fallback: try direct fields endpoint
+            // Strategy 2: Fallback to /Fields endpoint if not embedded
             console.warn(`Fields not found in cabinet root for ${cabinetId}, trying /Fields...`);
             try {
-                // Try the dedicated fields endpoint often present in DocuWare REST API
                 const fieldRes = await api.get(`/FileCabinets/${cabinetId}/Fields`);
                 if (fieldRes.data && fieldRes.data.Fields) {
                     return fieldRes.data.Fields;
@@ -35,7 +57,14 @@ export const docuwareService = {
         }
     },
 
-    // 2.5 Get Cabinet Document Count
+    /**
+     * @function getCabinetCount
+     * @description Gets the total number of documents in a cabinet.
+     * Uses query param count=0 to avoid fetching actual items, optimizing performance.
+     * 
+     * @param {string} cabinetId - The UUID of the File Cabinet.
+     * @returns {Promise<number>} Total document count.
+     */
     getCabinetCount: async (cabinetId) => {
         try {
             const response = await api.get(`/FileCabinets/${cabinetId}/Documents`, {
@@ -45,6 +74,7 @@ export const docuwareService = {
                 }
             });
 
+            // Handle DocuWare response variations (sometimes Count is an object)
             if (typeof response.data.Count === 'object' && response.data.Count !== null) {
                 return response.data.Count.Value || 0;
             }
@@ -55,15 +85,30 @@ export const docuwareService = {
         }
     },
 
-    // 3. Get Dialogs for a Cabinet
+    /**
+     * @function getDialogs
+     * @description Retrieves all search and store dialogs for a cabinet.
+     * Necessary to find the 'Search' dialog ID required for queries.
+     * 
+     * @param {string} cabinetId 
+     * @returns {Promise<Array>} List of dialogs.
+     */
     getDialogs: async (cabinetId) => {
         const response = await api.get(`/FileCabinets/${cabinetId}/Dialogs`);
         return response.data.Dialog || [];
     },
 
-    // 4. Search Documents with Filters
+    /**
+     * @function searchDocuments
+     * @description Executes a specific query against the File Cabinet.
+     * 
+     * @param {string} cabinetId - Target Cabinet.
+     * @param {Array<{fieldName: string, value: string}>} filters - Array of filter objects.
+     * @param {number} [resultLimit=1000] - Max items to return.
+     * @returns {Promise<{items: Array, total: number}>} Search results and total hits.
+     */
     searchDocuments: async (cabinetId, filters = [], resultLimit = 1000) => {
-        // If no filters, just list documents
+        // Case 1: No filters - List all documents (limited by resultLimit)
         if (filters.length === 0) {
             const response = await api.get(`/FileCabinets/${cabinetId}/Documents`, {
                 params: {
@@ -82,7 +127,7 @@ export const docuwareService = {
             };
         }
 
-        // Get the first search dialog (or use custom dialog)
+        // Case 2: With Filters - Requires Search Dialog ID
         const dialogs = await docuwareService.getDialogs(cabinetId);
         const searchDialog = dialogs.find(d => d.Type === 'Search') || dialogs[0];
 
@@ -90,7 +135,7 @@ export const docuwareService = {
             throw new Error('No search dialog found for this cabinet');
         }
 
-        // Build the search query
+        // Construct standard DocuWare Query Object
         const conditions = filters.map(filter => ({
             DBName: filter.fieldName,
             Value: [filter.value]
@@ -98,23 +143,22 @@ export const docuwareService = {
 
         const queryBody = {
             Condition: conditions,
-            Operation: 'And',
+            Operation: 'And', // Force strict AND logic
             CalculateTotalCount: true
         };
 
-        // Execute search using DialogExpression
+        // POST to /Query/DialogExpression is the standard way to search
         const response = await api.post(
             `/FileCabinets/${cabinetId}/Query/DialogExpression`,
             queryBody,
             {
                 params: {
                     dialogId: searchDialog.Id,
-                    count: resultLimit  // Use the dynamic result limit
+                    count: resultLimit
                 }
             }
         );
 
-        // Helper to extract count
         const getCount = (data) => {
             if (typeof data.Count === 'object' && data.Count !== null) {
                 return data.Count.Value || 0;
@@ -128,7 +172,15 @@ export const docuwareService = {
         };
     },
 
-    // 4.4 Get Select List (Unique Values for a Field)
+    /**
+     * @function getSelectList
+     * @description Retrieves unique values for a specific field (Select List).
+     * Useful for populating autocomplete or dropdown filters.
+     * 
+     * @param {string} cabinetId 
+     * @param {string} fieldName - DBName of the field.
+     * @returns {Promise<Array<string>>} List of unique values.
+     */
     getSelectList: async (cabinetId, fieldName) => {
         try {
             const dialogs = await docuwareService.getDialogs(cabinetId);
@@ -155,7 +207,15 @@ export const docuwareService = {
         }
     },
 
-    // 4.5 Get All Documents for Analytics (Optimized Parallel Fetch)
+    /**
+     * @function getAllDocuments
+     * @description Optimized Parallel Fetching for Analytics.
+     * Breaking down a large valid dataset into parallel batches to speed up retrieval.
+     * 
+     * @param {string} cabinetId 
+     * @param {function} onProgress - Callback(loaded, total)
+     * @returns {Promise<Array>} Complete list of documents.
+     */
     getAllDocuments: async (cabinetId, onProgress) => {
         try {
             console.log(`[Service] Starting optimized fetch for cabinet: ${cabinetId}`);
@@ -170,8 +230,9 @@ export const docuwareService = {
                 onProgress(0, totalCount);
             }
 
-            const CHUNK_SIZE = 2000;
-            const BATCH_SIZE = 5;
+            // Configuration for batching
+            const CHUNK_SIZE = 2000; // Max items per request
+            const BATCH_SIZE = 5; // Parallel requests
             const TIMEOUT_MS = 120000;
             let allItems = [];
             let totalLoaded = 0;
@@ -224,9 +285,16 @@ export const docuwareService = {
         }
     },
 
-    // 5. Get Document View URL
+    /**
+     * @function getDocumentViewUrl
+     * @description Generates a direct link to the DocuWare Viewer.
+     * 
+     * @param {string} cabinetId 
+     * @param {string} documentId 
+     * @returns {string} URL to open document in new tab.
+     */
     getDocumentViewUrl: (cabinetId, documentId) => {
-        // Get the base URL from session storage
+        // Get the base URL from session storage to support multi-tenant
         const authData = sessionStorage.getItem('docuware_auth');
         let baseUrl = 'https://rcsangola.docuware.cloud'; // Default fallback
         let orgId = 'bcb91903-58eb-49c6-8572-be5e3bb9611e'; // Default org ID
@@ -235,7 +303,6 @@ export const docuwareService = {
             try {
                 const parsed = JSON.parse(authData);
                 baseUrl = parsed.url;
-                // Try to get org ID if stored
                 if (parsed.organizationId) {
                     orgId = parsed.organizationId;
                 }
@@ -244,28 +311,44 @@ export const docuwareService = {
             }
         }
 
-        // DocuWare WebClient URL format:
-        // https://{domain}/DocuWare/Platform/WebClient/{orgId}/Integration?fc={cabinetId}&did={docId}&p=V
+        // URL Pattern: /DocuWare/Platform/WebClient/{orgId}/Integration?fc={cabinetId}&did={docId}&p=V
         return `${baseUrl}/DocuWare/Platform/WebClient/${orgId}/Integration?fc=${cabinetId}&did=${documentId}&p=V`;
     },
 
-    // 6. Download Document
+    /**
+     * @function downloadDocument
+     * @description Downloads the binary content of a document.
+     * 
+     * @param {string} cabinetId 
+     * @param {string} documentId 
+     * @returns {Promise<Blob>} The file blob (usually PDF).
+     */
     downloadDocument: async (cabinetId, documentId) => {
         const response = await api.get(
             `/FileCabinets/${cabinetId}/Documents/${documentId}/FileDownload`,
             {
                 params: {
-                    targetFileType: 'pdf',
-                    keepAnnotations: true // Ensure annotations like stamps are included
+                    targetFileType: 'pdf', // Convert to PDF on the fly if needed
+                    keepAnnotations: true // Preserve stamps and notes
                 },
                 responseType: 'blob',
-                timeout: 120000 // 2 minutes timeout for downloads
+                timeout: 120000
             }
         );
         return response.data;
     },
 
-    // 7. Replace Document Content (Full Overwrite Strategy)
+    /**
+     * @function uploadReplacement
+     * @description Replaces a document's content with a new file.
+     * CRITICAL: DocuWare does not support "simple replace". 
+     * We must (1) Append new section, (2) Delete old sections.
+     * 
+     * @param {string} cabinetId 
+     * @param {string} documentId 
+     * @param {Blob} fileBlob - The compressed/modified file.
+     * @returns {Promise<Object>} Updated document metadata.
+     */
     uploadReplacement: async (cabinetId, documentId, fileBlob) => {
         console.log(`[uploadReplacement] Starting overwrite for doc ${documentId} in cabinet ${cabinetId}`);
 
@@ -290,7 +373,7 @@ export const docuwareService = {
                         'Content-Type': fileBlob.type || 'application/pdf',
                         'Content-Disposition': `inline; filename="${fileBlob.name || 'reduced_document.pdf'}"`
                     },
-                    timeout: 120000 // 2 min timeout
+                    timeout: 120000
                 }
             );
             console.log('[uploadReplacement] New file appended successfully.');
@@ -298,11 +381,9 @@ export const docuwareService = {
             // Step 3: Delete ALL original sections
             // We must be careful not to delete the new section we just added.
             // Since we captured 'originalSections' BEFORE the append, we are safe to delete exactly those IDs.
-
             if (originalSections.length > 0) {
                 console.log('[uploadReplacement] Deleting old sections...');
 
-                // Process deletions sequentially to avoid race conditions or overload
                 for (const section of originalSections) {
                     const deleteUrl = `/FileCabinets/${cabinetId}/Sections/${section.Id}`;
                     console.log(`[uploadReplacement] Deleting old section: ${section.Id}`);
@@ -311,7 +392,7 @@ export const docuwareService = {
                         await api.delete(deleteUrl);
                     } catch (delErr) {
                         console.error(`[uploadReplacement] Failed to delete section ${section.Id}`, delErr);
-                        // We continue even if one fails, to try to clean up as much as possible
+                        // Continue even if one fails
                     }
                 }
                 console.log('[uploadReplacement] All old sections deleted.');
@@ -329,7 +410,16 @@ export const docuwareService = {
         }
     },
 
-    // 8. Update Document Fields
+    /**
+     * @function updateDocumentFields
+     * @description Updates specific index fields (metadata) for a document.
+     * 
+     * @param {string} cabinetId 
+     * @param {string} documentId 
+     * @param {string} fieldName - DBName of the field.
+     * @param {string} value - New value to set.
+     * @returns {Promise<Object>} Response data.
+     */
     updateDocumentFields: async (cabinetId, documentId, fieldName, value) => {
         console.log(`[updateDocumentFields] Updating ${fieldName} = ${value} for doc ${documentId}`);
 
@@ -339,7 +429,7 @@ export const docuwareService = {
                 {
                     FieldName: fieldName,
                     Item: value,
-                    ItemElementName: 'String'
+                    ItemElementName: 'String' // Assuming string type for now, can be dynamic
                 }
             ]
         };

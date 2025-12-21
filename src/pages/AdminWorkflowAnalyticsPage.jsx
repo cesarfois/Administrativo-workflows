@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useOptimizedWorkflows } from '../hooks/useOptimizedWorkflows';
 import { useFileCabinets } from '../hooks/useFileCabinets';
 import VirtualWorkflowList from '../components/Workflow/VirtualWorkflowList';
-import WorkflowDetailsModal from '../components/Dashboard/WorkflowDetailsModal';
+import WorkflowDetailsModal from '../components/Workflow/WorkflowDetailsModal';
 import { adminWorkflowService } from '../services/adminWorkflowService';
 import { FaShieldAlt, FaSync, FaSearch, FaSitemap, FaTasks, FaFileCsv } from 'react-icons/fa';
 import { useQuery } from '@tanstack/react-query';

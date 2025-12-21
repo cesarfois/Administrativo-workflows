@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import Navbar from '../components/Layout/Navbar';
 import Footer from '../components/Layout/Footer';
-import SearchForm from '../components/Features/SearchForm';
-import ResultsTable from '../components/Features/ResultsTable';
-import LogConsole from '../components/Features/LogConsole';
+import SearchForm from '../components/Documents/SearchForm';
+import ResultsTable from '../components/Documents/ResultsTable';
+import LogConsole from '../components/Documents/LogConsole';
 import { docuwareService } from '../services/docuwareService';
 import { FaDownload, FaFolderOpen, FaSync, FaStop, FaPlay } from 'react-icons/fa';
 
@@ -310,7 +310,16 @@ const DownloadPage = () => {
     // Processing Lock to prevent race conditions
     const isProcessingRef = useRef(false);
 
-    // Helper to "move" file (Copy + Delete) for File System Access API
+    /**
+     * @function moveFile
+     * @description Atomic Move Operation (Copy + Delete).
+     * The File System Access API does not strictly support 'move'. 
+     * We must copy the stream to the new location and delete the original.
+     * 
+     * @param {FileSystemDirectoryHandle} sourceDir 
+     * @param {FileSystemDirectoryHandle} destDir 
+     * @param {string} filename 
+     */
     const moveFile = async (sourceDir, destDir, filename) => {
         try {
             const sourceFileHandle = await sourceDir.getFileHandle(filename);
@@ -329,10 +338,16 @@ const DownloadPage = () => {
         }
     };
 
+    /**
+     * @function checkFolderForUploads
+     * @description Main Monitoring Loop (Heartbeat).
+     * Scans the watched directory for processed files, uploads them to DocuWare,
+     * updates metadata, and moves them to completion/error folders.
+     */
     const checkFolderForUploads = async () => {
         if (!monitorHandle || isProcessingRef.current) return;
 
-        isProcessingRef.current = true;
+        isProcessingRef.current = true; // Lock to prevent overlapping intervals
         try {
             // Ensure destination folders exist
             const successDir = await monitorHandle.getDirectoryHandle('Processados', { create: true });
@@ -342,7 +357,10 @@ const DownloadPage = () => {
 
             for await (const entry of monitorHandle.values()) {
                 if (entry.kind === 'file') {
-                    // Check regex: start with digits, then ___, then text
+                    // Regex Match: Look for files named like "123___Cabinet456___Contract.pdf"
+                    // Group 1: DocuWare DocID
+                    // Group 2: Cabinet ID
+                    // Group 3: Original Filename
                     const match = entry.name.match(/^(\d+)___(.+)___(.+)\.pdf$/i);
 
                     if (match) {
@@ -350,7 +368,7 @@ const DownloadPage = () => {
 
                         const filename = entry.name;
 
-                        // Check retry limit
+                        // 1. Retry Mechanism Check
                         if (failedUploads.current[filename] && failedUploads.current[filename] >= 3) {
                             addLog(`⚠️ ${filename} failed 3 times. Moving to 'Erros' folder.`);
                             try {
@@ -371,7 +389,7 @@ const DownloadPage = () => {
                         addLog(`   ID: ${docId}, Cabinet: ${fileCabinetId}`);
 
                         try {
-                            // Check if file still exists
+                            // 2. Consistency Check: Ensure file wasn't deleted mid-loop
                             try {
                                 await monitorHandle.getFileHandle(filename);
                             } catch (e) {
@@ -382,10 +400,11 @@ const DownloadPage = () => {
                             const file = await entry.getFile();
                             addLog(`   📤 Uploading replacement for ID ${docId}...`);
 
+                            // 3. Execution: Upload Replacement
                             await docuwareService.uploadReplacement(fileCabinetId, docId, file);
                             addLog(`   ✅ Upload successful!`);
 
-                            // Metadata Update Logic
+                            // 4. Metadata Update (Optional Step)
                             if (updateField && updateValue) {
                                 try {
                                     addLog(`   📝 Updating metadata: ${updateField} = "${updateValue}"...`);
@@ -399,7 +418,7 @@ const DownloadPage = () => {
 
                             addLog(`   🚚 Moving to 'Processados'...`);
 
-                            // Move processed file
+                            // 5. Cleanup: Move to Success Folder
                             try {
                                 await moveFile(monitorHandle, successDir, filename);
                                 addLog(`   📂 Moved to /Processados`);
@@ -417,6 +436,7 @@ const DownloadPage = () => {
                             console.error(`Failed to process ${entry.name}:`, err);
                             addLog(`   ❌ Error processing ${entry.name}: ${err.message}`);
 
+                            // Increment Failure Counter
                             failedUploads.current[filename] = (failedUploads.current[filename] || 0) + 1;
                             addLog(`   🔄 Retry count: ${failedUploads.current[filename]}/3`);
                         }
@@ -425,6 +445,7 @@ const DownloadPage = () => {
             }
 
             // --- Idle Check Logic ---
+            // If no activity for 5 minutes, turn off the monitor to save resources/safety
             if (filesProcessedInThisCycle > 0) {
                 lastActivityRef.current = Date.now(); // Reset timer if we did work
             } else {
