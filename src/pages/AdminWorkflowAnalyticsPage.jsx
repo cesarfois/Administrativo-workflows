@@ -9,18 +9,25 @@ import { adminWorkflowService } from '../services/adminWorkflowService';
 import { FaShieldAlt, FaSync, FaSearch, FaSitemap, FaTasks, FaFileCsv } from 'react-icons/fa';
 import { useQuery } from '@tanstack/react-query';
 
+import { useAuth } from '../context/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
+
 const AdminWorkflowAnalyticsPage = () => {
+    const { user } = useAuth();
+    const queryClient = useQueryClient();
+    const scopeKey = user?.url || '';
+
     // 1. Optimized Hook: Fetches only the lightweight index (ID + Name)
     // Cached for 24h, loads instantly on return
-    const { workflows, isLoading, error, refetch } = useOptimizedWorkflows();
+    const { workflows, isLoading, error, refetch } = useOptimizedWorkflows(scopeKey);
 
     // 2. Global FC Map (for names)
     const { fcMap } = useFileCabinets();
 
     // 3. Optional: Global Stats (Background Sync)
     // This fetches counts for ALL workflows to populate the "Totals" card
-    const { data: stats, isFetching: isStatsLoading } = useQuery({
-        queryKey: ['workflow-global-stats'],
+    const { data: stats, isFetching: isStatsLoading, refetch: refetchStats } = useQuery({
+        queryKey: ['workflow-global-stats', scopeKey], // Scope by user URL
         queryFn: async () => {
             setLoadingProgress(0);
             const allWithCounts = await adminWorkflowService.getWorkflowsWithCounts(null, (current, total) => {
@@ -115,6 +122,16 @@ const AdminWorkflowAnalyticsPage = () => {
         setSelectedWorkflow(null);
     };
 
+    const handleRefresh = () => {
+        // Invalidate specific queries to ensure hard refresh
+        queryClient.invalidateQueries({ queryKey: ['workflows-index-v2', scopeKey] });
+        queryClient.invalidateQueries({ queryKey: ['workflow-global-stats', scopeKey] });
+
+        // Trigger refetch
+        refetch();
+        refetchStats();
+    };
+
     return (
         <div className="flex flex-col h-full bg-base-200">
             <div className="flex-1 p-4 flex flex-col h-full overflow-hidden">
@@ -156,11 +173,11 @@ const AdminWorkflowAnalyticsPage = () => {
                         </div>
 
                         <button
-                            onClick={() => refetch()}
-                            className={`btn btn-square btn-ghost ${isLoading ? 'loading' : ''}`}
-                            title="Recarregar índice"
+                            onClick={handleRefresh}
+                            className={`btn btn-square btn-ghost ${isLoading || isStatsLoading ? 'loading' : ''}`}
+                            title="Recarregar índice e estatísticas"
                         >
-                            {!isLoading && <FaSync />}
+                            {!(isLoading || isStatsLoading) && <FaSync />}
                         </button>
                     </div>
                 </div>

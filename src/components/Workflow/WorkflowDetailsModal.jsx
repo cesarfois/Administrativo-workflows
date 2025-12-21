@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { FaTimes, FaCopy, FaExclamationTriangle, FaClock, FaUsers, FaTasks } from 'react-icons/fa';
+import { FaTimes, FaCopy, FaExclamationTriangle, FaClock, FaUsers, FaTasks, FaExternalLinkAlt, FaEye } from 'react-icons/fa';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const WorkflowDetailsModal = ({ workflow, isOpen, onClose }) => {
@@ -349,15 +349,18 @@ const WorkflowDetailsModal = ({ workflow, isOpen, onClose }) => {
                                             return (<tr key={idx}>
                                                 <td>
                                                     {task.DocId ? (
-                                                        <a
-                                                            href={docLink}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="link link-primary font-medium flex items-center gap-1"
-                                                            title="Abrir documento no DocuWare"
-                                                        >
-                                                            📄 {task.DocId}
-                                                        </a>
+                                                        <div className="flex items-center gap-3">
+                                                            <a
+                                                                href={docLink}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="btn btn-sm bg-[#4f46e5] hover:bg-[#4338ca] text-white border-none gap-2 px-3 shadow-sm hover:shadow-md transition-all rounded-md font-medium"
+                                                                title="Visualizar documento"
+                                                            >
+                                                                <FaEye className="text-sm" /> View
+                                                            </a>
+                                                            <span className="font-bold text-gray-700 font-mono text-base">{task.DocId}</span>
+                                                        </div>
                                                     ) : (
                                                         <span className="text-base-content/50">N/A</span>
                                                     )}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FaChevronDown } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import ErrorMessage from '../Common/ErrorMessage';
 import LoadingSpinner from '../Common/LoadingSpinner';
@@ -73,16 +74,24 @@ const LoginForm = () => {
                                 <label htmlFor="url" className="text-sm font-medium text-gray-700 block mb-1">
                                     Platform URL
                                 </label>
-                                <input
-                                    id="url"
-                                    name="url"
-                                    type="text"
-                                    required
-                                    value={url}
-                                    onChange={(e) => setUrl(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#00bfff] focus:ring-2 focus:ring-[#00bfff]/20 outline-none transition-all placeholder-gray-400 text-gray-900 bg-white"
-                                    placeholder="https://example.docuware.cloud"
-                                />
+                                <div className="relative">
+                                    <input
+                                        id="url"
+                                        name="url"
+                                        type="text"
+                                        required
+                                        value={url}
+                                        list="url-options"
+                                        onChange={(e) => setUrl(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-[#00bfff] focus:ring-2 focus:ring-[#00bfff]/20 outline-none transition-all placeholder-gray-400 text-gray-900 bg-white pr-10 [&::-webkit-calendar-picker-indicator]:hidden !important" // Added hidden pseudo-class
+                                        placeholder="https://example.docuware.cloud"
+                                    />
+                                    <FaChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                </div>
+                                <datalist id="url-options">
+                                    <option value="https://rcsangola.docuware.cloud/" />
+                                    <option value="https://rcs-experience.docuware.cloud/" />
+                                </datalist>
                             </div>
 
                             {/* Username */}
