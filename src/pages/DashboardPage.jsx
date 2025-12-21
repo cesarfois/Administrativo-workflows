@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import Navbar from '../components/Layout/Navbar';
-import Footer from '../components/Layout/Footer';
+// import Navbar from '../components/Layout/Navbar';
+// import Footer from '../components/Layout/Footer';
 import SearchForm from '../components/Features/SearchForm';
 import ResultsTable from '../components/Features/ResultsTable';
 import LogConsole from '../components/Features/LogConsole';
@@ -117,10 +117,8 @@ const DashboardPage = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-base-200">
-            <Navbar />
-
-            <main className="flex-1 container mx-auto p-4">
+        <div className="flex flex-col h-full bg-base-200">
+            <div className="flex-1 p-4 flex flex-col h-full overflow-hidden">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div className="flex items-center gap-3">
                         <FaSearch className="w-6 h-6 text-primary" />
@@ -141,9 +139,7 @@ const DashboardPage = () => {
                 </div>
 
                 <ResultsTable results={results} totalDocs={totalDocs} cabinetId={cabinetId} />
-            </main>
-
-            <Footer />
+            </div>
         </div>
     );
 };

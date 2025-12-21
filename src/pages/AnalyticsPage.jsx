@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import Navbar from '../components/Layout/Navbar';
-import Footer from '../components/Layout/Footer';
+
+// import Navbar from '../components/Layout/Navbar';
+// import Footer from '../components/Layout/Footer';
 import AnalyticsDashboard from '../components/Features/AnalyticsDashboard';
 import { docuwareService } from '../services/docuwareService';
 
@@ -40,10 +41,8 @@ const AnalyticsPage = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-base-200">
-            <Navbar />
-
-            <main className="flex-1 container mx-auto p-4">
+        <div className="flex flex-col h-full bg-base-200">
+            <div className="flex-1 p-4 flex flex-col h-full overflow-hidden">
                 <div className="flex items-center gap-3 mb-6">
                     <FaChartPie className="w-6 h-6 text-primary" />
                     <h1 className="text-3xl font-bold">Visual Analytics</h1>
@@ -55,9 +54,7 @@ const AnalyticsPage = () => {
                     onCabinetChange={handleCabinetChange}
                     loadingCabinets={loadingCabinets}
                 />
-            </main>
-
-            <Footer />
+            </div>
         </div>
     );
 };

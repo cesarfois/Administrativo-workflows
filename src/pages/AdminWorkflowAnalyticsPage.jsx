@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import Navbar from '../components/Layout/Navbar';
-import Footer from '../components/Layout/Footer';
+// import Navbar from '../components/Layout/Navbar';
+// import Footer from '../components/Layout/Footer';
 import { useOptimizedWorkflows } from '../hooks/useOptimizedWorkflows';
 import { useFileCabinets } from '../hooks/useFileCabinets';
 import VirtualWorkflowList from '../components/Workflow/VirtualWorkflowList';
@@ -116,10 +116,8 @@ const AdminWorkflowAnalyticsPage = () => {
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-base-200">
-            <Navbar />
-
-            <main className="flex-1 container mx-auto p-4 flex flex-col h-[calc(100vh-80px)]">
+        <div className="flex flex-col h-full bg-base-200">
+            <div className="flex-1 p-4 flex flex-col h-full overflow-hidden">
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 flex-none relative">
                     {/* Real Progress Bar */}
@@ -272,17 +270,16 @@ const AdminWorkflowAnalyticsPage = () => {
                         )}
                     </div>
                 </div>
-            </main>
 
-            {/* Modal */}
-            {selectedWorkflow && (
-                <WorkflowDetailsModal
-                    workflow={selectedWorkflow}
-                    isOpen={showDetailsModal}
-                    onClose={handleCloseModal}
-                />
-            )}
-            <Footer />
+                {/* Modal */}
+                {selectedWorkflow && (
+                    <WorkflowDetailsModal
+                        workflow={selectedWorkflow}
+                        isOpen={showDetailsModal}
+                        onClose={handleCloseModal}
+                    />
+                )}
+            </div>
         </div>
     );
 };

@@ -9,6 +9,7 @@ import WorkflowAnalyticsPage from './pages/WorkflowAnalyticsPage';
 import AdminWorkflowAnalyticsPage from './pages/AdminWorkflowAnalyticsPage';
 import SemaforosPage from './pages/SemaforosPage';
 import DownloadPage from './pages/DownloadPage';
+import DashboardLayout from './components/Layout/DashboardLayout';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -34,7 +35,9 @@ function App() {
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <DashboardLayout>
+                    <DashboardPage />
+                  </DashboardLayout>
                 </ProtectedRoute>
               }
             />
@@ -42,15 +45,19 @@ function App() {
               path="/analytics"
               element={
                 <ProtectedRoute>
-                  <AnalyticsPage />
+                  <DashboardLayout>
+                    <AnalyticsPage />
+                  </DashboardLayout>
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/workflow-analytics"
+              path="/fluxo"
               element={
                 <ProtectedRoute>
-                  <WorkflowAnalyticsPage />
+                  <DashboardLayout>
+                    <WorkflowAnalyticsPage />
+                  </DashboardLayout>
                 </ProtectedRoute>
               }
             />
@@ -58,15 +65,19 @@ function App() {
               path="/admin-workflow-analytics"
               element={
                 <ProtectedRoute>
-                  <AdminWorkflowAnalyticsPage />
+                  <DashboardLayout>
+                    <AdminWorkflowAnalyticsPage />
+                  </DashboardLayout>
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/semaforos"
+              path="/controle-documental"
               element={
                 <ProtectedRoute>
-                  <SemaforosPage />
+                  <DashboardLayout>
+                    <SemaforosPage />
+                  </DashboardLayout>
                 </ProtectedRoute>
               }
             />
@@ -74,7 +85,9 @@ function App() {
               path="/download"
               element={
                 <ProtectedRoute>
-                  <DownloadPage />
+                  <DashboardLayout>
+                    <DownloadPage />
+                  </DashboardLayout>
                 </ProtectedRoute>
               }
             />

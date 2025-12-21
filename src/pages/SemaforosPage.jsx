@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FaTrafficLight } from 'react-icons/fa';
-import Navbar from '../components/Layout/Navbar';
-import Footer from '../components/Layout/Footer';
+
 import TrafficLightConfigForm from '../components/Features/TrafficLightConfigForm';
 import ResultsTable from '../components/Features/ResultsTable';
 import StatusConfig from '../components/Features/StatusConfig';
@@ -623,9 +622,8 @@ const SemaforosPage = () => {
 
     if (mode === 'create' || mode === 'edit') {
         return (
-            <div className="min-h-screen bg-base-200 flex flex-col">
-                <Navbar />
-                <main className="flex-1 container mx-auto p-4">
+            <div className="flex flex-col h-full bg-base-200">
+                <main className="flex-1 container mx-auto p-4 overflow-y-auto">
                     <ControlCreator
                         user={user}
                         initialData={mode === 'edit' ? activeControl : null}
@@ -633,72 +631,72 @@ const SemaforosPage = () => {
                         onSave={handleCreate}
                     />
                 </main>
-                <Footer />
             </div>
         );
     }
 
     if (mode === 'view' && activeControl) {
         return (
-            <div className="min-h-screen bg-base-200 flex flex-col">
-                <Navbar />
-                <main className="flex-1 container mx-auto p-4">
+            <div className="flex flex-col h-full bg-base-200">
+                <main className="flex-1 container mx-auto p-4 overflow-y-auto">
                     <ControlViewer control={activeControl} onBack={() => setMode('list')} />
                 </main>
-                <Footer />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-base-200 flex flex-col">
-            <Navbar />
-            <main className="flex-1 container mx-auto p-4">
-                <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col h-full bg-base-200">
+            <main className="flex-1 container mx-auto p-4 overflow-y-auto">
+                <div className="flex justify-between items-center mb-6 px-1">
                     <div>
-                        <div className="flex items-center gap-3 mb-2">
+                        <div className="flex items-center gap-3 mb-1">
                             <FaTrafficLight className="w-6 h-6 text-primary" />
-                            <h1 className="text-3xl font-bold">Controle Documental</h1>
+                            <h1 className="text-2xl font-bold text-gray-800">Controle Documental</h1>
                         </div>
-                        <p className="text-gray-500">Gerencie seus controles e status</p>
+                        <p className="text-sm text-gray-500">Gerencie seus controles e status</p>
                     </div>
-                    <button onClick={() => setMode('create')} className="btn btn-primary">
+                    <button onClick={() => setMode('create')} className="btn btn-info text-white border-none bg-[#00bfff] hover:bg-[#00ace6] shadow-sm">
                         + Novo Controle
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {controls.map(control => (
-                        <div key={control.id} className="card bg-base-100 shadow-xl border border-base-200 hover:shadow-2xl transition-all">
-                            <div className="card-body">
-                                <h2 className="card-title justify-between">
-                                    {control.name}
-                                    <div className="badge badge-secondary badge-outline text-xs">
-                                        {control.filters?.length || 0} filtros
-                                    </div>
-                                </h2>
-                                <p className="text-sm text-gray-400">Armário: {control.cabinetName || cabinets[control.cabinetId] || control.cabinetId}</p>
-                                <p className="text-sm text-gray-400">Criado em: {new Date(control.createdAt).toLocaleDateString()}</p>
+                <div className="bg-white shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_10px_20px_-2px_rgba(0,0,0,0.04)] rounded-xl p-6 min-h-[calc(100vh-12rem)] border border-gray-100">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {controls.map(control => (
+                            <div key={control.id} className="card bg-base-100 shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                                <div className="card-body p-6">
+                                    <h2 className="card-title justify-between text-base">
+                                        {control.name}
+                                        <div className="badge badge-secondary badge-outline text-[10px] items-center h-5">
+                                            {control.filters?.length || 0} filtros
+                                        </div>
+                                    </h2>
+                                    <p className="text-xs text-gray-400 mt-1">Armário: {control.cabinetName || cabinets[control.cabinetId] || control.cabinetId}</p>
+                                    <p className="text-xs text-gray-400">Criado em: {new Date(control.createdAt).toLocaleDateString()}</p>
 
-                                <div className="card-actions justify-end mt-4">
-                                    <button onClick={() => handleEdit(control)} className="btn btn-sm btn-ghost">Editar</button>
-                                    <button onClick={() => handleDelete(control.id)} className="btn btn-sm btn-ghost text-error">Excluir</button>
-                                    <button onClick={() => openControl(control)} className="btn btn-sm btn-primary">Abrir</button>
+                                    <div className="card-actions justify-end mt-4 pt-4 border-t border-gray-50">
+                                        <button onClick={() => handleEdit(control)} className="btn btn-xs btn-ghost text-gray-400 hover:text-gray-600">Editar</button>
+                                        <button onClick={() => handleDelete(control.id)} className="btn btn-xs btn-ghost text-error/70 hover:text-error">Excluir</button>
+                                        <button onClick={() => openControl(control)} className="btn btn-sm text-white bg-[#00bfff] hover:bg-[#00ace6] border-none shadow-sm rounded-lg px-4 ml-2">Abrir</button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
 
-                    {controls.length === 0 && (
-                        <div className="col-span-full text-center py-20 bg-base-100 rounded-xl border border-dashed border-base-300 text-gray-400">
-                            <p className="text-xl font-medium mb-2">Nenhum controle criado</p>
-                            <p className="mb-6">Crie seu primeiro controle documental para começar a gerenciar status.</p>
-                            <button onClick={() => setMode('create')} className="btn btn-outline">Criar Agora</button>
-                        </div>
-                    )}
+                        {controls.length === 0 && (
+                            <div className="col-span-full flex flex-col items-center justify-center py-20 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                                <div className="p-4 bg-white rounded-full shadow-sm mb-4">
+                                    <FaTrafficLight className="w-8 h-8 text-gray-300" />
+                                </div>
+                                <p className="text-lg font-medium text-gray-600 mb-1">Nenhum controle criado</p>
+                                <p className="text-sm text-gray-400 mb-6">Crie seu primeiro controle para começar.</p>
+                                <button onClick={() => setMode('create')} className="btn btn-outline btn-sm">Criar Agora</button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </main>
-            <Footer />
         </div>
     );
 };
