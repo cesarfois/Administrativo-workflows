@@ -224,31 +224,58 @@ export const workflowService = {
      * @param {string} workflowId - The workflow ID
      * @returns {Promise<Array>} Array of task objects
      */
-    getWorkflowTasks: async (workflowId) => {
+    /**
+     * Get active tasks/instances for a specific workflow
+     * @param {string} workflowId - The workflow ID
+     * @param {string} viewType - 'user' (My Tasks) or 'admin' (Controller/All Tasks). Default: 'admin' logic (auto-detect)
+     * @returns {Promise<Array>} Array of task objects
+     */
+    getWorkflowTasks: async (workflowId, viewType = 'auto') => {
         try {
-            console.log(`[WorkflowService] Fetching tasks for workflow ${workflowId}...`);
+            console.log(`[WorkflowService] Fetching tasks for workflow ${workflowId} (Mode: ${viewType})...`);
 
-            // Try controller tasks endpoint FIRST (Administrative view)
-            try {
+            const tryController = async () => {
                 const tasks = await workflowService.getAllPages(`/ControllerWorkflows/${workflowId}/Tasks`);
-                console.log(`[WorkflowService] Found ${tasks.length} tasks via controller endpoint for workflow ${workflowId}`);
+                console.log(`[WorkflowService] Found ${tasks.length} tasks via controller endpoint`);
                 return tasks;
-            } catch (controllerError) {
-                console.warn(`[WorkflowService] Controller endpoint failed for ${workflowId}, trying user endpoint...`);
+            };
 
-                // Try user tasks endpoint as fallback
+            const tryUser = async () => {
+                const tasks = await workflowService.getAllPages(`/Workflows/${workflowId}/Tasks`);
+                console.log(`[WorkflowService] Found ${tasks.length} active tasks (User view)`);
+                return tasks;
+            };
+
+            if (viewType === 'user') {
+                // STRICT MODE: Only check user tasks
+                return await tryUser();
+            }
+
+            if (viewType === 'admin') {
+                // PREFER Controller, fallback to user (or fail if strict admin required, but fallback is safer generally)
                 try {
-                    const tasks = await workflowService.getAllPages(`/Workflows/${workflowId}/Tasks`);
-                    console.log(`[WorkflowService] Found ${tasks.length} active tasks for workflow ${workflowId} (User view)`);
-                    return tasks;
-                } catch (userTasksError) {
-                    console.warn(`[WorkflowService] Both endpoints failed for workflow ${workflowId}`);
-                    return []; // Return empty array instead of failing
+                    return await tryController();
+                } catch (e) {
+                    console.warn(`[WorkflowService] Controller fetch failed in admin mode, falling back to user view.`);
+                    return await tryUser();
                 }
             }
+
+            // AUTO MODE (Original logic): Try Controller, then User
+            try {
+                return await tryController();
+            } catch (controllerError) {
+                console.warn(`[WorkflowService] Controller endpoint failed, trying user endpoint...`);
+                try {
+                    return await tryUser();
+                } catch (userTasksError) {
+                    console.warn(`[WorkflowService] Both endpoints failed for workflow ${workflowId}`);
+                    return [];
+                }
+            }
+
         } catch (error) {
             console.error(`[WorkflowService] Error fetching tasks for workflow ${workflowId}:`, error);
-            // Return empty array on error instead of throwing
             return [];
         }
     },
@@ -257,6 +284,60 @@ export const workflowService = {
      * Get all workflows with their active instance counts
      * @returns {Promise<Array>} Array of workflow objects with counts
      */
+    /**
+     * Get workflows specifically for the logged-in user (My Workflows)
+     * Queries /DocuWare/Platform/Workflow/Workflows
+     * @returns {Promise<Array>} Array of workflow objects with counts
+     */
+    getMyWorkflowsWithCounts: async () => {
+        try {
+            console.log('[WorkflowService] Fetching MY workflows (User Context)...');
+
+            // 1. Get User Workflows (where user has tasks)
+            // Note: This endpoint (/Workflows) returns workflows where the user has active tasks
+            const response = await workflowApi.get('/Workflows');
+            const workflows = response.data.Workflow || [];
+
+            if (workflows.length === 0) {
+                console.log('[WorkflowService] No user workflows found');
+                return [];
+            }
+
+            console.log(`[WorkflowService] Found ${workflows.length} user workflows. Fetching details...`);
+
+            // 2. Fetch task counts for these specific workflows
+            const workflowsWithCounts = await Promise.all(
+                workflows.map(async (workflow) => {
+                    try {
+                        // FORCE 'user' viewType to ensure we don't accidentally fetch controller tasks
+                        // if the user happens to have admin rights.
+                        const tasks = await workflowService.getWorkflowTasks(workflow.Id, 'user');
+
+                        return {
+                            id: workflow.Id,
+                            name: workflow.Name || workflow.Id,
+                            description: workflow.Description || 'Fluxo de trabalho atribuído a você',
+                            activeInstanceCount: tasks.length
+                        };
+                    } catch (error) {
+                        console.error(`[WorkflowService] Failed to get details for ${workflow.Id}:`, error);
+                        return {
+                            id: workflow.Id,
+                            name: workflow.Name || workflow.Id,
+                            description: '',
+                            activeInstanceCount: 0
+                        };
+                    }
+                })
+            );
+
+            return workflowsWithCounts;
+        } catch (error) {
+            console.error('[WorkflowService] Error fetching user workflows:', error);
+            throw error;
+        }
+    },
+
     getWorkflowsWithCounts: async () => {
         try {
             console.log('[WorkflowService] Fetching workflows with instance counts...');
@@ -274,7 +355,8 @@ export const workflowService = {
             const workflowsWithCounts = await Promise.all(
                 workflows.map(async (workflow) => {
                     try {
-                        const tasks = await workflowService.getWorkflowTasks(workflow.Id);
+                        // Default behavior (or explicit 'admin')
+                        const tasks = await workflowService.getWorkflowTasks(workflow.Id, 'admin');
                         return {
                             id: workflow.Id,
                             name: workflow.Name || workflow.Id,
@@ -293,6 +375,7 @@ export const workflowService = {
                     }
                 })
             );
+            // ... (rest of function)
 
             console.log('[WorkflowService] ✅ Successfully fetched all workflow counts');
             return workflowsWithCounts;

@@ -17,7 +17,7 @@ const WorkflowAnalyticsPage = () => {
             setLoading(true);
             console.log('[WorkflowAnalyticsPage] Fetching workflows...');
 
-            const data = await workflowService.getWorkflowsWithCounts();
+            const data = await workflowService.getMyWorkflowsWithCounts();
             setWorkflows(data);
 
             console.log(`[WorkflowAnalyticsPage] ✅ Loaded ${data.length} workflows`);
@@ -50,7 +50,7 @@ const WorkflowAnalyticsPage = () => {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                     <div className="flex items-center gap-3">
                         <FaSitemap className="w-6 h-6 text-primary" />
-                        <h1 className="text-3xl font-bold">Análise de Fluxo de Trabalho</h1>
+                        <h1 className="text-3xl font-bold">Meus Fluxos</h1>
                     </div>
                     <button
                         onClick={handleRefresh}
@@ -66,7 +66,7 @@ const WorkflowAnalyticsPage = () => {
                 <div className="alert alert-info mb-6">
                     <FaInfoCircle className="w-5 h-5" />
                     <div>
-                        <h3 className="font-bold">Análise de Fluxo de Trabalho</h3>
+                        <h3 className="font-bold">Meus Fluxos</h3>
                         <div className="text-sm">
                             Visualização dos workflows ativos de acordo com suas permissões de acesso.
                         </div>

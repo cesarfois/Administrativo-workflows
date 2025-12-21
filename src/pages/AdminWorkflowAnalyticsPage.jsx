@@ -121,27 +121,7 @@ const AdminWorkflowAnalyticsPage = () => {
                 {/* Header */}
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4 flex-none relative">
                     {/* Real Progress Bar */}
-                    {(isLoading || isStatsLoading) && (
-                        <div className="absolute top-[-10px] left-0 right-0 h-2 bg-base-300 overflow-hidden rounded-full shadow-inner border border-base-content/5">
-                            <div
-                                className="h-full bg-primary transition-all duration-300 ease-out flex items-center justify-end pr-1"
-                                style={{
-                                    width: `${isLoading ? 100 : Math.max(5, loadingProgress)}%`,
-                                    backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)',
-                                    backgroundSize: '1rem 1rem'
-                                }}
-                            >
-                                {/* Only show text if there's enough space */}
-                                {loadingProgress > 10 && !isLoading && (
-                                    <span className="text-[8px] font-bold text-primary-content leading-none px-1">{loadingProgress}%</span>
-                                )}
-                            </div>
-                            {/* Indeterminate shimmer for initial index load if progress is 0 */}
-                            {isLoading && (
-                                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                            )}
-                        </div>
-                    )}
+
 
                     <div className="flex items-center gap-3">
                         <FaShieldAlt className="w-6 h-6 text-error" />
@@ -184,6 +164,17 @@ const AdminWorkflowAnalyticsPage = () => {
                         </button>
                     </div>
                 </div>
+
+                {/* Global Loading Alert */}
+                {(isLoading || isStatsLoading) && (
+                    <div className="alert alert-info shadow-lg mb-4 rounded-box animate-in fade-in zoom-in duration-300">
+                        <FaSync className="animate-spin w-6 h-6" />
+                        <div>
+                            <h3 className="font-bold">Carregando dados</h3>
+                            <div className="text-xs">Sincronizando índice e contabilizando tarefas... {loadingProgress}%</div>
+                        </div>
+                    </div>
+                )}
 
 
 

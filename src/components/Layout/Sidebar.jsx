@@ -19,7 +19,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
     const navItems = [
         { path: '/', label: 'Pesquisa', icon: <FaSearch /> },
         { path: '/analytics', label: 'Analytics', icon: <FaChartBar /> },
-        { path: '/fluxo', label: 'Análise de Fluxo', icon: <FaProjectDiagram /> },
+        { path: '/fluxo', label: 'Meus Fluxos', icon: <FaProjectDiagram /> },
         { path: '/admin-workflow-analytics', label: 'Admin Workflows', icon: <FaShieldAlt />, highlight: true },
         { path: '/download', label: 'Baixar Arquivos', icon: <FaDownload /> },
         { path: '/controle-documental', label: 'Controle Documental', icon: <FaFolderOpen /> },
