@@ -1,5 +1,49 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useState, useEffect } from 'react';
+
+const SessionTimer = () => {
+    const [timeLeft, setTimeLeft] = useState(3600); // 1 hour in seconds
+
+    useEffect(() => {
+        const calculateTimeLeft = () => {
+            const startTime = localStorage.getItem('docuware_session_start');
+            if (!startTime) return 0;
+
+            const elapsedSeconds = Math.floor((Date.now() - parseInt(startTime, 10)) / 1000);
+            const remaining = 3600 - elapsedSeconds;
+            return remaining > 0 ? remaining : 0;
+        };
+
+        // Initial set
+        setTimeLeft(calculateTimeLeft());
+
+        const interval = setInterval(() => {
+            const remaining = calculateTimeLeft();
+            setTimeLeft(remaining);
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, []);
+
+    const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
+    // Color warning: Red if < 5 mins, Orange if < 15 mins
+    let colorClass = "badge-neutral";
+    if (timeLeft < 300) colorClass = "badge-error animate-pulse";
+    else if (timeLeft < 900) colorClass = "badge-warning";
+    else colorClass = "badge-success";
+
+    return (
+        <div className={`badge ${colorClass} gap-2 font-mono hidden md:inline-flex`} title="Tempo de Sessão Restante">
+            🕒 {formatTime(timeLeft)}
+        </div>
+    );
+};
 
 const Navbar = () => {
     const { user, logout } = useAuth();
@@ -60,6 +104,9 @@ const Navbar = () => {
             <div className="flex-none">
                 {user ? (
                     <div className="flex items-center gap-4">
+                        {/* Session Timer */}
+                        <SessionTimer />
+
                         <span className="text-sm">Hello, {user.username}</span>
                         <button onClick={logout} className="btn btn-sm btn-error">Logout</button>
                     </div>

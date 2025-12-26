@@ -19,12 +19,14 @@ export const AuthProvider = ({ children }) => {
     const login = async (url, username, password) => {
         const data = await authService.login(url, username, password);
         setUser(data);
+        localStorage.setItem('docuware_session_start', Date.now().toString());
         return data;
     };
 
     const logout = () => {
         authService.logout();
         setUser(null);
+        localStorage.removeItem('docuware_session_start');
     };
 
     return (
