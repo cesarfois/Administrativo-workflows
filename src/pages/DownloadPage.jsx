@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import Navbar from '../components/Layout/Navbar';
 import Footer from '../components/Layout/Footer';
 import SearchForm from '../components/Documents/SearchForm';
 import ResultsTable from '../components/Documents/ResultsTable';
@@ -57,13 +56,13 @@ const DownloadPage = () => {
         }
     };
 
-    const handleSearch = async (selectedCabinetId, filters) => {
+    const handleSearch = async (selectedCabinetId, filters, allFields, resultLimit) => {
         try {
             if (selectedCabinetId !== cabinetId) {
                 setCabinetId(selectedCabinetId);
             }
             setSelectedIds([]); // Clear selection on new search
-            addLog(`Searching cabinet ${selectedCabinetId} with ${filters.length} filter(s)...`);
+            addLog(`Searching cabinet ${selectedCabinetId} with ${filters.length} filter(s) (Limit: ${resultLimit})...`);
 
             if (filters.length > 0) {
                 filters.forEach(f => {
@@ -71,7 +70,7 @@ const DownloadPage = () => {
                 });
             }
 
-            const response = await docuwareService.searchDocuments(selectedCabinetId, filters);
+            const response = await docuwareService.searchDocuments(selectedCabinetId, filters, resultLimit);
             setResults(response.items);
             setTotalDocs(response.total);
             addLog(`✅ Found ${response.items.length} documents (Total available: ${response.total})`);
@@ -503,7 +502,6 @@ const DownloadPage = () => {
 
     return (
         <div className="min-h-screen flex flex-col bg-base-200">
-            <Navbar />
 
             <main className="flex-1 container mx-auto p-4">
                 <div className="flex items-center gap-3 mb-6">
