@@ -3,6 +3,11 @@ import api from './api';
 
 const AUTH_KEY = 'docuware_auth';
 
+// Environment Variables
+const CLIENT_ID = import.meta.env.VITE_DOCUWARE_CLIENT_ID;
+const CLIENT_SECRET = import.meta.env.VITE_DOCUWARE_CLIENT_SECRET;
+const REDIRECT_URI = import.meta.env.VITE_DOCUWARE_REDIRECT_URI;
+
 // Flag to prevent multiple simultaneous refresh calls
 let isRefreshing = false;
 let failedQueue = [];
@@ -19,101 +24,137 @@ const processQueue = (error, token = null) => {
 };
 
 export const authService = {
-    // 1. Login Function
-    login: async (url, username, password) => {
+    /**
+     * @function login
+     * @description Initiates the OAuth Authorization Code Flow by redirecting the user.
+     * @param {string} url - The DocuWare Platform URL provided by user (e.g. https://rcsangola.docuware.cloud)
+     */
+    login: async (url) => {
         try {
-            // Normalize URL (remove trailing slash and ensure https for cloud)
+            // Normalize URL
             let baseUrl = url.replace(/\/$/, '').trim();
-
-            // Force HTTPS for DocuWare Cloud URLs
             if (baseUrl.includes('.docuware.cloud') && baseUrl.startsWith('http://')) {
                 baseUrl = baseUrl.replace('http://', 'https://');
-                console.warn('Automatically converted HTTP to HTTPS for DocuWare Cloud');
             }
 
-            // Step 1: Get Identity Service URL
-            console.log('Step 1: Getting Identity Service Info...');
-            const serviceDesc = await api.get('/Home/IdentityServiceInfo', {
-                headers: { 'x-target-url': baseUrl }
-            });
+            // 1. Get Identity Service Info to find the correct Identity Provider URL
+            // Use /discovery endpoint to bypass DocuWare firewall (clean server-to-server request)
+            const serviceDesc = await axios.get(`http://localhost:3001/discovery?target=${encodeURIComponent(baseUrl)}`);
             const identityUrl = serviceDesc.data.IdentityServiceUrl;
 
-            // Extract path/origin
-            const identityPath = new URL(identityUrl).pathname;
-            const identityOrigin = new URL(identityUrl).origin;
-            const orgId = identityPath.replace(/^\//, '');
+            // Extract the org ID from the URL if possible, or just use the identity endpoint
+            // Example IdentityURL: https://login-emea.docuware.cloud/cabfaa...
 
-            // Step 2: Get OpenID Config
-            console.log('Step 2: Getting OpenID Configuration...');
-            const proxiedIdentity = `/docuware-proxy${identityPath}`;
+            // 2. Discover Endpoints
+            const proxiedIdentity = `/docuware-proxy${new URL(identityUrl).pathname}`;
+            const identityOrigin = new URL(identityUrl).origin;
+
             const discovery = await axios.get(`${proxiedIdentity}/.well-known/openid-configuration`, {
                 headers: { 'x-target-url': identityOrigin }
             });
-            const tokenEndpoint = discovery.data.token_endpoint;
 
-            // Extract token path/origin
+            const authorizationEndpoint = discovery.data.authorization_endpoint;
+
+            // 3. Construct Authorization URL
+            const authUrl = new URL(authorizationEndpoint);
+            authUrl.searchParams.append('response_type', 'code');
+            authUrl.searchParams.append('client_id', CLIENT_ID);
+            authUrl.searchParams.append('redirect_uri', REDIRECT_URI);
+            authUrl.searchParams.append('scope', 'docuware.platform docuware.settings offline_access');
+            authUrl.searchParams.append('ui_locales', 'pt-PT en-US'); // Improve UX
+
+            // Save the Base URL to session so we know where to connect after callback
+            sessionStorage.setItem('docuware_pre_login_url', baseUrl);
+
+            // Redirect User
+            window.location.href = authUrl.toString();
+
+        } catch (error) {
+            console.error('Login Initialization Failed:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * @function exchangeCodeForToken
+     * @description Exchanges the authorization code for access/refresh tokens.
+     */
+    exchangeCodeForToken: async (code) => {
+        const baseUrl = sessionStorage.getItem('docuware_pre_login_url');
+        if (!baseUrl) throw new Error('Base URL lost during redirect.');
+
+        try {
+            // 1. Rediscover endpoints using /discovery endpoint
+            // This bypasses WAF by making clean server-to-server requests without browser headers
+            const serviceDescResp = await axios.get(`http://localhost:3001/discovery?target=${encodeURIComponent(baseUrl)}`);
+            const serviceDesc = serviceDescResp.data;
+
+            const identityUrl = serviceDesc.IdentityServiceUrl;
+            const proxiedIdentity = `/docuware-proxy${new URL(identityUrl).pathname}`;
+            const identityOrigin = new URL(identityUrl).origin;
+
+            const discoveryResp = await fetch(`${proxiedIdentity}/.well-known/openid-configuration`, {
+                method: 'GET',
+                credentials: 'omit', // CRITICAL: Do not send cookies
+                headers: {
+                    'x-target-url': identityOrigin,
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!discoveryResp.ok) throw new Error(`OpenID Discovery failed: ${discoveryResp.status}`);
+            const discovery = await discoveryResp.json();
+
+            const tokenEndpoint = discovery.token_endpoint;
             const tokenPath = new URL(tokenEndpoint).pathname;
             const tokenOrigin = new URL(tokenEndpoint).origin;
-
-            // Step 3: Request Access Token
-            console.log('Step 3: Requesting Access Token...');
             const proxiedToken = `/docuware-proxy${tokenPath}`;
-            const params = new URLSearchParams();
-            params.append('grant_type', 'password');
-            params.append('username', username);
-            params.append('password', password);
-            params.append('client_id', 'docuware.platform.net.client');
-            params.append('scope', 'docuware.platform');
 
-            const tokenResponse = await axios.post(proxiedToken, params, {
+            // 2. Prepare Token Request
+            const params = new URLSearchParams();
+            params.append('grant_type', 'authorization_code');
+            params.append('code', code);
+            params.append('client_id', CLIENT_ID);
+            params.append('client_secret', CLIENT_SECRET); // Safe to use here as we are in a controllable Env/Proxy context (client-side but using our App reg)
+            params.append('redirect_uri', REDIRECT_URI);
+
+            const response = await axios.post(proxiedToken, params, {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'x-target-url': tokenOrigin
                 }
             });
 
-            const accessToken = tokenResponse.data.access_token;
-            const refreshToken = tokenResponse.data.refresh_token; // Capture Refresh Token
-            console.log('✅ Authentication successful!');
+            const { access_token, refresh_token } = response.data;
 
             // Save to SessionStorage
             const authData = {
-                token: accessToken,
-                refreshToken: refreshToken,
-                username: username,
+                token: access_token,
+                refreshToken: refresh_token,
                 url: baseUrl,
-                organizationId: orgId,
-                tokenEndpoint: tokenEndpoint // Save endpoint URL for refreshing
+                tokenEndpoint: tokenEndpoint
             };
+
             sessionStorage.setItem(AUTH_KEY, JSON.stringify(authData));
-            localStorage.setItem('docuware_session_start', Date.now().toString()); // Sync timer
+            sessionStorage.removeItem('docuware_pre_login_url'); // Cleanup
 
             // Set default header
-            api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+            api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
 
             return authData;
+
         } catch (error) {
-            console.error('❌ Login failed:', error);
-            if (error.response) {
-                const data = error.response.data;
-                const errorMsg = data.error_description || data.error || `Error ${error.response.status}`;
-                throw new Error(`Login Failed: ${errorMsg}`);
-            }
+            console.error('Token Exchange Failed:', error);
             throw error;
         }
     },
 
-    // 2. Refresh Token Function
     refreshToken: async () => {
         const stored = sessionStorage.getItem(AUTH_KEY);
         if (!stored) throw new Error('No session data found');
-
         const authData = JSON.parse(stored);
-        if (!authData.refreshToken || !authData.tokenEndpoint) throw new Error('No refresh token available');
 
         try {
-            console.log('🔄 Attempting to refresh token...');
-
             const tokenPath = new URL(authData.tokenEndpoint).pathname;
             const tokenOrigin = new URL(authData.tokenEndpoint).origin;
             const proxiedToken = `/docuware-proxy${tokenPath}`;
@@ -121,7 +162,8 @@ export const authService = {
             const params = new URLSearchParams();
             params.append('grant_type', 'refresh_token');
             params.append('refresh_token', authData.refreshToken);
-            params.append('client_id', 'docuware.platform.net.client');
+            params.append('client_id', CLIENT_ID);
+            params.append('client_secret', CLIENT_SECRET);
 
             const response = await axios.post(proxiedToken, params, {
                 headers: {

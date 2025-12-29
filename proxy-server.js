@@ -1,6 +1,14 @@
 import express from 'express';
 import cors from 'cors';
+import axios from 'axios';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+
+// Initialize Express App
+const app = express();
+const PORT = 3001;
+
+// Discovery route moved to after CORS setup (see below)
+
 
 /**
  * @file proxy-server.js
@@ -13,9 +21,9 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
  * @version 2.0.0
  */
 
-// Initialize Express App
-const app = express();
-const PORT = 3001;
+// Initialize Express App (Moved to top)
+// const app = express();
+// const PORT = 3001;
 
 // ----------------------------------------------------------------------------
 // 1. Global Middleware Configuration
@@ -46,7 +54,44 @@ app.use((req, res, next) => {
 });
 
 // ----------------------------------------------------------------------------
-// 2. Proxy Logic Implementation
+// 2. Discovery Route
+// ----------------------------------------------------------------------------
+
+/**
+ * Route: /discovery
+ * Clean Server-to-Server Discovery Endpoint to bypass DocuWare WAF.
+ * Makes a direct request to DocuWare without browser headers.
+ */
+app.get('/discovery', async (req, res) => {
+    const targetUrl = req.query.target;
+    if (!targetUrl) {
+        return res.status(400).json({ error: 'Missing target query parameter' });
+    }
+
+    try {
+        console.log(`[Proxy] 🕵️‍♂️ Performing Server-Side Discovery for: ${targetUrl}`);
+
+        // Construct the full URL for IdentityServiceInfo
+        // targetUrl e.g. https://rcsangola.docuware.cloud
+        const infoUrl = `${targetUrl}/DocuWare/Platform/Home/IdentityServiceInfo`;
+
+        const response = await axios.get(infoUrl, {
+            headers: {
+                'Accept': 'application/json'
+                // No Origin, No Referer, No Cookies -> Clean Request
+            }
+        });
+
+        console.log(`[Proxy] ✅ Discovery Success!`);
+        res.json(response.data);
+    } catch (error) {
+        console.error(`[Proxy] ❌ Discovery Failed: ${error.message}`);
+        res.status(500).json({ error: 'Discovery Failed', details: error.message });
+    }
+});
+
+// ----------------------------------------------------------------------------
+// 3. Proxy Logic Implementation
 // ----------------------------------------------------------------------------
 
 /**
@@ -98,9 +143,21 @@ const proxyOptions = {
         const timestamp = new Date().toISOString();
         console.log(`[${timestamp}] [Proxy] 📤 Forwarding ${req.method} ${req.originalUrl} -> ${target}`);
 
-        // Cleanliness: Remove the internal routing header so DocuWare doesn't see it
+        if (target) {
+            // Rewrite Origin and Referer to match the target to satisfy WCF/CORS checks
+            proxyReq.setHeader('Origin', target);
+            proxyReq.setHeader('Referer', target + '/');
+        }
+
+        // Cleanliness: Remove browser-specific metadata that might trigger WAFs when Origin is rewritten
         proxyReq.removeHeader('x-target-url');
-        proxyReq.removeHeader('origin'); // Let changeOrigin handle the origin header re-writing
+        proxyReq.removeHeader('cookie');
+        proxyReq.removeHeader('sec-fetch-dest');
+        proxyReq.removeHeader('sec-fetch-mode');
+        proxyReq.removeHeader('sec-fetch-site');
+        proxyReq.removeHeader('sec-fetch-user');
+
+        // Optional: Remove Sec-Ch-Ua if strict UA filtering is suspected, but usually browser UAs are fine.
     },
 
     /**

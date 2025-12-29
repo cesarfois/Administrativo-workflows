@@ -9,7 +9,9 @@ import WorkflowAnalyticsPage from './pages/WorkflowAnalyticsPage';
 import AdminWorkflowAnalyticsPage from './pages/AdminWorkflowAnalyticsPage';
 import SemaforosPage from './pages/SemaforosPage';
 import DownloadPage from './pages/DownloadPage';
+import AdminFormsPage from './pages/AdminFormsPage';
 import DashboardLayout from './components/Layout/DashboardLayout';
+import CallbackPage from './pages/CallbackPage';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -31,6 +33,7 @@ function App() {
         <Router>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/auth/callback" element={<CallbackPage />} />
             <Route
               path="/dashboard"
               element={
@@ -87,6 +90,16 @@ function App() {
                 <ProtectedRoute>
                   <DashboardLayout>
                     <DownloadPage />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/forms"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <AdminFormsPage />
                   </DashboardLayout>
                 </ProtectedRoute>
               }
