@@ -195,7 +195,7 @@ const proxyOptions = {
 app.use('/DocuWare', createProxyMiddleware({
     ...proxyOptions,
     pathRewrite: {
-        '^/': '/DocuWare/' // Ensures standard DocuWare behavior if striped
+        '^/': '/DocuWare/' // Ensures standard DocuWare behavior since Express strips the mount path
     }
 }));
 

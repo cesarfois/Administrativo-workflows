@@ -10,7 +10,8 @@ import {
     FaBars,
     FaChevronLeft,
     FaChevronRight,
-    FaWpforms
+    FaWpforms,
+    FaHistory
 } from 'react-icons/fa';
 
 const Sidebar = ({ isCollapsed, toggleSidebar }) => {
@@ -22,6 +23,7 @@ const Sidebar = ({ isCollapsed, toggleSidebar }) => {
         { path: '/analytics', label: 'Analytics', icon: <FaChartBar /> },
         { path: '/fluxo', label: 'Meus Fluxos', icon: <FaProjectDiagram /> },
         { path: '/admin-workflow-analytics', label: 'Admin Workflows', icon: <FaShieldAlt />, highlight: true },
+        { path: '/workflow-history', label: 'Histórico de Workflow', icon: <FaHistory />, highlight: false }, // New Link
         { path: '/admin/forms', label: 'Gestão de Formulários', icon: <FaWpforms />, highlight: false }, // New Link
         { path: '/download', label: 'Baixar Arquivos', icon: <FaDownload /> },
         { path: '/controle-documental', label: 'Controle Documental', icon: <FaFolderOpen /> },

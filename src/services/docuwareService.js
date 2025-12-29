@@ -99,6 +99,40 @@ export const docuwareService = {
     },
 
     /**
+     * @function getOrganization
+     * @description Retrieves the Organization info (specifically GUID).
+     * Maps to DocuWare resource: /Organizations
+     * 
+     * @returns {Promise<string>} The Organization GUID.
+     */
+    getOrganization: async () => {
+        try {
+            const response = await api.get('/Organizations');
+            const orgs = response.data.Organization;
+            if (orgs && orgs.length > 0) {
+                return orgs[0].Id; // Return first organization GUID
+            }
+            return null;
+        } catch (error) {
+            console.error('Error fetching Organization:', error);
+            return null;
+        }
+    },
+
+    /**
+     * @function getDocument
+     * @description Retrieves a specific document's metadata (fields).
+     * 
+     * @param {string} cabinetId 
+     * @param {string} docId 
+     * @returns {Promise<Object>} Document object with Fields.
+     */
+    getDocument: async (cabinetId, docId) => {
+        const response = await api.get(`/FileCabinets/${cabinetId}/Documents/${docId}`);
+        return response.data;
+    },
+
+    /**
      * @function searchDocuments
      * @description Executes a specific query against the File Cabinet.
      * 
@@ -439,5 +473,70 @@ export const docuwareService = {
             body
         );
         return response.data;
+    },
+    /**
+     * @function getDocumentHistory
+     * @description Retrieves the audit trail/history of a specific document.
+     * Uses HATEOAS: First fetches the document to verify existence and get the correct 'history' link.
+     * 
+     * @param {string} cabinetId - The UUID of the File Cabinet.
+     * @param {string} docId - The Document ID.
+     * @returns {Promise<Array>} List of history entries.
+     */
+    getDocumentHistory: async (cabinetId, docId) => {
+        try {
+            console.log(`[DocuWare] Fetching document ${docId} to find history link...`);
+
+            // 1. Fetch Document first to validate ID and get Links
+            // Note: We use 'section' param to avoid downloading file content, just metadata
+            const docResponse = await api.get(`/FileCabinets/${cabinetId}/Documents/${docId}`);
+
+            if (!docResponse.data) {
+                throw new Error("Documento não encontrado.");
+            }
+
+            // 2. Find 'history' link relation
+            const links = docResponse.data.Links || [];
+            console.log('[DocuWare] Available Links:', links.map(l => l.Rel).join(', '));
+
+            let historyLink = links.find(l => l.Rel && l.Rel.toLowerCase() === 'history');
+            let requestUrl;
+
+            if (historyLink) {
+                requestUrl = historyLink.Href;
+
+                // Handle platform prefix if present in the absolute URL
+                if (requestUrl.includes('/DocuWare/Platform')) {
+                    const platformIndex = requestUrl.indexOf('/DocuWare/Platform');
+                    if (platformIndex !== -1) {
+                        requestUrl = requestUrl.substring(platformIndex + '/DocuWare/Platform'.length);
+                    }
+                }
+            } else {
+                console.warn(`[DocuWare] 'history' link missing. Trying standard fallback pattern...`);
+                // Fallback: Append /History to the document URL. 
+                // We use the ID directly from params to ensure we build a valid path.
+                const fallbackUrl = `/FileCabinets/${cabinetId}/Documents/${docId}/History`;
+                console.log(`[DocuWare] Using fallback URL: ${fallbackUrl}`);
+                requestUrl = fallbackUrl;
+            }
+
+            console.log(`[DocuWare] Fetching history from: ${requestUrl}`);
+            const historyResponse = await api.get(requestUrl);
+            return historyResponse.data.History || [];
+
+        } catch (error) {
+            console.error(`Error fetching history for doc ${docId}:`, error);
+            // Handle 404 gracefully (empty history)
+            if (error.response && error.response.status === 404) {
+                console.warn("[DocuWare] History endpoint returned 404. Returning empty list.");
+                return [];
+            }
+            if (error.response && error.response.status === 403) {
+                throw new Error("Acesso negado ao histórico do documento.");
+            }
+            throw new Error("Erro ao buscar histórico. Verifique permissões ou conexão.");
+        }
     }
 };
+

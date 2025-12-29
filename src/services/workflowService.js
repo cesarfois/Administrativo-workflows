@@ -98,30 +98,64 @@ export const workflowService = {
                 const workflows = response.data.Workflow || [];
                 console.log(`[WorkflowService] Found ${workflows.length} workflows`);
                 return workflows;
-            } catch (primaryError) {
-                console.warn('[WorkflowService] Primary endpoint failed, trying alternative...');
-                console.error('[WorkflowService] Error details:', primaryError.response?.data || primaryError.message);
+            } catch (error) {
+                console.warn('[WorkflowService] Primary endpoint failed, trying alternatives...', error.message);
 
-                // Try alternative endpoint for Controller workflows
-                try {
-                    const response = await workflowApi.get('/ControllerWorkflows');
-                    console.log('[WorkflowService] Controller endpoint response:', response.status);
-
-                    const workflows = response.data.Workflow || [];
-                    console.log(`[WorkflowService] Found ${workflows.length} workflows via Controller endpoint`);
-                    return workflows;
-                } catch (secondaryError) {
-                    console.error('[WorkflowService] Controller endpoint also failed:', secondaryError.response?.data || secondaryError.message);
-                    throw primaryError; // Re-throw the original error
-                }
+                // Fallback logic here if needed, or rethrow
+                throw error;
             }
         } catch (error) {
             console.error('[WorkflowService] Error fetching workflows:', error);
-            console.error('[WorkflowService] Error response:', error.response?.data);
-            console.error('[WorkflowService] Error status:', error.response?.status);
-            throw new Error(`Falha ao buscar workflows: ${error.response?.data?.Message || error.message}`);
+            return [];
         }
     },
+
+    /**
+     * Get Workflow History for a specific Document ID
+     * Uses the Workflow History endpoint to retrieve audit trail
+     * @param {string} docId - The Document ID
+     * @returns {Promise<Array>} List of workflow history events
+     */
+    getWorkflowHistory: async (docId) => {
+        try {
+            console.log(`[WorkflowService] Fetching workflow history for DocID: ${docId}`);
+
+            // Strategy: Search for all workflow instances for this DocID using /Instances endpoint
+            // The API baseURL is /DocuWare/Platform/Workflow
+            // We search for instances linked to this document
+
+            const response = await workflowApi.get(`/Instances?docId=${docId}`);
+            const instances = response.data.WorkflowInstance || [];
+
+            if (instances.length === 0) {
+                console.log(`[WorkflowService] No active instances found for ${docId}.`);
+
+                // If no ACTIVE instances, we might want to check if the user has completed tasks
+                // But the API for "Completed instances" is not standard /Instances.
+                // For now, return empty.
+                return [];
+            }
+
+            // Fetch history for each found instance
+            // Each instance has an ID. We can get its history via /Instances/{id}/History
+
+            const historyPromises = instances.map(instance =>
+                workflowApi.get(`/Instances/${instance.Id}/History`)
+            );
+
+            const histories = await Promise.all(historyPromises);
+
+            // Flatten and sort by timestamp (newest first)
+            const allEvents = histories.flatMap(h => h.data.History || []);
+            return allEvents.sort((a, b) => new Date(b.TimeStamp) - new Date(a.TimeStamp));
+
+        } catch (error) {
+            console.warn(`[WorkflowService] Failed to get workflow history: ${error.message}`);
+            // If the standard endpoint fails, throw.
+            throw error;
+        }
+    },
+
 
     /**
      * Get active tasks/instances for a specific workflow

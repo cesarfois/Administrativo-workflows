@@ -10,6 +10,7 @@ import AdminWorkflowAnalyticsPage from './pages/AdminWorkflowAnalyticsPage';
 import SemaforosPage from './pages/SemaforosPage';
 import DownloadPage from './pages/DownloadPage';
 import AdminFormsPage from './pages/AdminFormsPage';
+import WorkflowHistoryPage from './pages/WorkflowHistoryPage';
 import DashboardLayout from './components/Layout/DashboardLayout';
 import CallbackPage from './pages/CallbackPage';
 
@@ -100,6 +101,16 @@ function App() {
                 <ProtectedRoute>
                   <DashboardLayout>
                     <AdminFormsPage />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/workflow-history"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <WorkflowHistoryPage />
                   </DashboardLayout>
                 </ProtectedRoute>
               }
