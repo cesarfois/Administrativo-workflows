@@ -486,6 +486,26 @@ export const adminWorkflowService = {
     },
 
     /**
+     * Get history for a specific workflow instance
+     * @param {string} workflowId - The workflow ID
+     * @param {string} instanceId - The instance ID
+     * @returns {Promise<Array>} Array of history steps
+     */
+    getWorkflowInstanceHistory: async (workflowId, instanceId) => {
+        try {
+            // Use ControllerWorkflows endpoint for admin access
+            // Endpoint: /ControllerWorkflows/{workflowId}/Instances/{instanceId}/History
+            const url = `/ControllerWorkflows/${workflowId}/Instances/${instanceId}/History`;
+            const response = await adminWorkflowApi.get(url);
+            return response.data.HistoryStep || [];
+        } catch (error) {
+            console.warn(`[AdminWorkflowService] Failed to fetch history for instance ${instanceId}:`, error.message);
+            // Return empty array instead of throwing to allow partial exports
+            return [];
+        }
+    },
+
+    /**
      * Helper for debugging - raw GET request
      */
     getRaw: async (url) => {

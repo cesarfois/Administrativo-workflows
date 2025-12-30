@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
-import { FaTimes, FaCopy, FaExclamationTriangle, FaClock, FaUsers, FaTasks, FaExternalLinkAlt, FaEye } from 'react-icons/fa';
+import { FaTimes, FaCopy, FaExclamationTriangle, FaClock, FaUsers, FaTasks, FaExternalLinkAlt, FaEye, FaFileCsv } from 'react-icons/fa';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const WorkflowDetailsModal = ({ workflow, isOpen, onClose }) => {
@@ -223,6 +223,131 @@ const WorkflowDetailsModal = ({ workflow, isOpen, onClose }) => {
     return (
         <div className="modal modal-open">
             <div className="modal-box max-w-6xl h-[90vh] flex flex-col p-0">
+
+
+                {/* Export Button */}
+                <div className="absolute top-6 right-16 mr-4">
+                    <button
+                        onClick={async () => {
+                            if (!sortedTasks || sortedTasks.length === 0) return;
+
+                            const confirmExport = window.confirm(`Deseja exportar o histórico detalhado de ${sortedTasks.length} instâncias? Isso pode levar algum tempo.`);
+                            if (!confirmExport) return;
+
+                            try {
+                                const BOM = '\uFEFF';
+                                let csvContent = BOM;
+
+                                // Dynamic Headers based on first task's columns + Fixed Headers
+                                // We want InstanceID FIRST as requested
+                                const fixedHeaders = ['Instance GUID', 'DocId', 'Workflow Name', 'Current Activity', 'Current User', 'Received On'];
+                                const historyHeaders = ['History Activity', 'History User', 'History Date', 'History Decision', 'History Message'];
+
+                                // Get dynamic column headers from the first task if available
+                                let dynamicHeaders = [];
+                                if (sortedTasks.length > 0 && sortedTasks[0].ColumnValues) {
+                                    dynamicHeaders = sortedTasks[0].ColumnValues
+                                        .map(c => c.FieldName)
+                                        .filter(name => !['WF_Activity', 'WF_Task_User_Name', 'WF_Received_On'].includes(name));
+                                }
+
+                                const headerRow = [...fixedHeaders, ...dynamicHeaders, ...historyHeaders].join(',');
+                                csvContent += headerRow + '\n';
+
+                                // Iterate over all tasks
+                                for (let i = 0; i < sortedTasks.length; i++) {
+                                    const task = sortedTasks[i];
+
+                                    // Base data for this instance
+                                    const instanceId = task.InstanceId || '';
+                                    const docId = task.DocId || '';
+                                    const wfName = workflow.name || '';
+                                    const currActivity = task.ActivityName || '';
+                                    const currUser = task.AssignedTo || '';
+                                    const receivedOn = task.formattedDate || '';
+
+                                    // Get dynamic values
+                                    const dynamicValues = dynamicHeaders.map(header => {
+                                        const col = task.ColumnValues?.find(c => c.FieldName === header);
+                                        const val = col?.Value?.Item || '';
+                                        return `"${String(val).replace(/"/g, '""')}"`;
+                                    });
+
+                                    // Fetch History
+                                    /* global adminWorkflowService */
+                                    // Need to import service or pass it. 
+                                    // Since we are in a component, we should import it at top.
+                                    // Assuming it's imported as 'adminWorkflowService'
+                                    const history = await import('../../services/adminWorkflowService').then(m => m.adminWorkflowService.getWorkflowInstanceHistory(workflow.id, instanceId));
+
+                                    if (history && history.length > 0) {
+                                        // create a row for each history step
+                                        history.forEach(step => {
+                                            const histActivity = step.ActivityName || '';
+                                            const histUser = step.UserName || '';
+                                            const histDate = step.TimeStamp ? new Date(step.TimeStamp).toLocaleString('pt-PT') : '';
+                                            const histDecision = step.DecisionLabel || '';
+                                            const histMessage = step.Message || '';
+
+                                            const row = [
+                                                instanceId,
+                                                docId,
+                                                `"${wfName.replace(/"/g, '""')}"`,
+                                                `"${currActivity.replace(/"/g, '""')}"`,
+                                                `"${currUser.replace(/"/g, '""')}"`,
+                                                `"${receivedOn.replace(/"/g, '""')}"`,
+                                                ...dynamicValues,
+                                                `"${histActivity.replace(/"/g, '""')}"`,
+                                                `"${histUser.replace(/"/g, '""')}"`,
+                                                `"${histDate.replace(/"/g, '""')}"`,
+                                                `"${histDecision.replace(/"/g, '""')}"`,
+                                                `"${histMessage.replace(/"/g, '""')}"`
+                                            ].join(',');
+
+                                            csvContent += row + '\n';
+                                        });
+                                    } else {
+                                        // No history or failed, just print current state
+                                        const row = [
+                                            instanceId,
+                                            docId,
+                                            `"${wfName.replace(/"/g, '""')}"`,
+                                            `"${currActivity.replace(/"/g, '""')}"`,
+                                            `"${currUser.replace(/"/g, '""')}"`,
+                                            `"${receivedOn.replace(/"/g, '""')}"`,
+                                            ...dynamicValues,
+                                            'No History / Current',
+                                            '',
+                                            '',
+                                            '',
+                                            ''
+                                        ].join(',');
+                                        csvContent += row + '\n';
+                                    }
+                                }
+
+                                // Trigger Download
+                                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.setAttribute('download', `${workflow.name}_History_${new Date().toISOString().slice(0, 10)}.csv`);
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+
+                            } catch (err) {
+                                console.error('Export failed:', err);
+                                alert('Erro ao exportar histórico. Verifique o console.');
+                            }
+                        }}
+                        className="btn btn-sm btn-outline btn-success gap-2"
+                        title="Exportar Histórico Completo (CSV)"
+                    >
+                        <FaFileCsv /> Exportar Histórico
+                    </button>
+                </div>
+
                 {/* Header */}
                 <div className="sticky top-0 bg-base-100 border-b border-base-300 p-6 z-10">
                     <div className="flex justify-between items-start">
@@ -492,6 +617,7 @@ const WorkflowDetailsModal = ({ workflow, isOpen, onClose }) => {
                 </div>
             </div>
         </div>
+
     );
 };
 

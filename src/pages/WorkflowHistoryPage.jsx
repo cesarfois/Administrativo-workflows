@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaSearch, FaHistory, FaCheckCircle, FaTimesCircle, FaClock, FaUser, FaFilter, FaBan, FaExternalLinkAlt, FaRegCopy, FaList } from 'react-icons/fa';
+import { FaSearch, FaHistory, FaCheckCircle, FaTimesCircle, FaClock, FaUser, FaFilter, FaBan, FaExternalLinkAlt, FaRegCopy, FaList, FaFileCsv } from 'react-icons/fa';
 import { workflowAnalyticsService } from '../services/workflowAnalyticsService';
 import { docuwareService } from '../services/docuwareService';
 
@@ -162,6 +162,148 @@ const WorkflowHistoryPage = () => {
             });
     };
 
+    const handleExportCSV = async () => {
+        if (!historyInstances || historyInstances.length === 0) return;
+
+        try {
+            // Ensure we have document fields
+            let fieldsToExport = documentFields;
+            if (!fieldsToExport || fieldsToExport.length === 0) {
+                const docData = await docuwareService.getDocument(selectedCabinet, docId);
+                fieldsToExport = docData.Fields || [];
+                setDocumentFields(fieldsToExport);
+            }
+
+            // 1. Prepare Headers
+            // Standard columns
+            const fixedHeaders = [
+                'Instance GUID',
+                'DOCID',
+                'Instância',
+                'Versão (Instância)',
+                'Iniciado Em',
+                'Atividade',
+                'Tipo Atividade',
+                'Decisão/Operação',
+                'Usuário',
+                'Data Decisão'
+            ];
+
+            // Dynamic field headers (INCLUDE system fields and sort)
+            const dynamicFieldNames = fieldsToExport
+                .map(f => f.FieldName)
+                .sort();
+
+            // Add 'Link Documento' as the last header
+            const csvHeaders = [...fixedHeaders, ...dynamicFieldNames, 'Link Documento'];
+
+            // 2. Flatten Data
+            const rows = [];
+
+            historyInstances.forEach(instance => {
+                const steps = filteredSteps(instance.HistorySteps);
+
+                if (steps.length === 0) {
+                    // create a dummy step row just to show the instance existed
+                    const rowData = {
+                        'Instance GUID': instance.Id,
+                        DOCID: docId,
+                        'Instância': instance.Name,
+                        'Versão (Instância)': instance.Version,
+                        'Iniciado Em': formatDate(instance.StartDate || instance.StartedAt, true),
+                        'Atividade': '(Sem atividades)',
+                        'Tipo Atividade': '',
+                        'Decisão/Operação': '',
+                        'Usuário': '',
+                        'Data Decisão': '',
+                        'Link Documento': docLink
+                    };
+
+                    // Add dynamic fields
+                    dynamicFieldNames.forEach(fieldName => {
+                        const field = fieldsToExport.find(f => f.FieldName === fieldName);
+                        rowData[fieldName] = field ? (field.Item || field.Value || '') : '';
+                    });
+                    rows.push(rowData);
+                } else {
+                    steps.forEach(step => {
+                        const infoItem = step.Info?.Item || {};
+                        let validUser = infoItem.UserName || step.User || step.UserName || '';
+                        if (!validUser && infoItem.AssignedUsers && Array.isArray(infoItem.AssignedUsers)) {
+                            validUser = infoItem.AssignedUsers.join(', ');
+                        }
+                        const validDate = infoItem.DecisionDate || step.StepDate || step.TimeStamp || '';
+                        const validDecision = infoItem.DecisionName || step.DecisionLabel || '';
+
+                        const rowData = {
+                            'Instance GUID': instance.Id,
+                            DOCID: docId,
+                            'Instância': instance.Name,
+                            'Versão (Instância)': instance.Version,
+                            'Iniciado Em': formatDate(instance.StartDate || instance.StartedAt, true),
+                            'Atividade': step.ActivityName || step.Name,
+                            'Tipo Atividade': step.ActivityType,
+                            'Decisão/Operação': validDecision,
+                            'Usuário': validUser,
+                            'Data Decisão': formatDate(validDate),
+                            'Link Documento': docLink
+                        };
+
+                        // Add dynamic fields
+                        dynamicFieldNames.forEach(fieldName => {
+                            const field = fieldsToExport.find(f => f.FieldName === fieldName);
+                            // Handle Dates specifically if needed
+                            let val = field ? (field.Item || field.Value || '') : '';
+
+                            // Check for DocuWare Date format or explicit Date field
+                            if (typeof val === 'string' && val.includes('/Date(')) {
+                                val = formatDate(val, true);
+                            } else if (field && field.ItemElementName === 'Date' && field.Item) {
+                                val = formatDate(field.Item, true);
+                            }
+
+                            rowData[fieldName] = val;
+                        });
+
+                        rows.push(rowData);
+                    });
+                }
+            });
+
+            // 3. Generate CSV String
+            const escapeCsv = (val) => {
+                if (val === null || val === undefined) return '';
+                const str = String(val);
+                if (str.includes(';') || str.includes('"') || str.includes('\n')) {
+                    return `"${str.replace(/"/g, '""')}"`;
+                }
+                return str;
+            };
+
+            const headerRow = csvHeaders.map(escapeCsv).join(';');
+            const dataRows = rows.map(row => {
+                return csvHeaders.map(header => escapeCsv(row[header])).join(';');
+            });
+
+            const csvContent = [headerRow, ...dataRows].join('\n');
+
+            // 4. Download
+            // Add BOM for Excel compatibility
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Historico_Workflow_${docId}_${new Date().getTime()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+        } catch (err) {
+            console.error('Export failed:', err);
+            setError('Falha ao exportar CSV. Tente novamente.');
+        }
+    };
+
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-8">
             {/* Header Area */}
@@ -270,6 +412,14 @@ const WorkflowHistoryPage = () => {
                                         {!fieldsLoading && <FaList />} Campos
                                     </button>
 
+                                    <button
+                                        onClick={handleExportCSV}
+                                        className="btn btn-sm btn-outline gap-2"
+                                        disabled={loading || !historyInstances}
+                                    >
+                                        <FaFileCsv /> CSV
+                                    </button>
+
                                     <a
                                         href={docLink}
                                         target="_blank"
@@ -303,12 +453,17 @@ const WorkflowHistoryPage = () => {
                                                     {instance.Name}
                                                 </span>
                                                 <span className="flex items-center justify-between mt-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${activeTab === idx ? 'bg-primary/10 text-primary-focus' : 'bg-base-200 text-gray-500'}`}>
-                                                            v{instance.Version}
-                                                        </span>
-                                                        <span className="text-[10px] text-gray-400">
-                                                            {formatDate(instance.StartDate || instance.StartedAt || instance.TimeStamp, true)}
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${activeTab === idx ? 'bg-primary/10 text-primary-focus' : 'bg-base-200 text-gray-500'}`}>
+                                                                v{instance.Version}
+                                                            </span>
+                                                            <span className="text-[10px] text-gray-400">
+                                                                {formatDate(instance.StartDate || instance.StartedAt || instance.TimeStamp, true)}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-[10px] font-mono text-gray-300 break-all leading-tight select-all">
+                                                            {instance.Id}
                                                         </span>
                                                     </div>
                                                     {idx === 0 && <span className="text-[10px] uppercase font-bold text-success tracking-wider">Atual</span>}
@@ -459,17 +614,19 @@ const WorkflowHistoryPage = () => {
                                 {documentFields.length === 0 ? (
                                     <tr><td colSpan="2" className="text-center">Nenhum campo encontrado.</td></tr>
                                 ) : (
-                                    documentFields.filter(f => !f.SystemField).map((field, idx) => (
-                                        <tr key={idx} className="hover">
-                                            <td className="font-semibold text-gray-600">{field.FieldName}</td>
-                                            <td className="break-all">
-                                                {field.ItemElementName === 'Date' && field.Item
-                                                    ? formatDate(field.Item)
-                                                    : (field.Item || field.Value || '')
-                                                }
-                                            </td>
-                                        </tr>
-                                    ))
+                                    documentFields.map((field, idx) => {
+                                        const val = field.Item || field.Value || '';
+                                        const isDate = field.ItemElementName === 'Date' || (typeof val === 'string' && val.includes('/Date('));
+
+                                        return (
+                                            <tr key={idx} className="hover">
+                                                <td className="font-semibold text-gray-600">{field.FieldName}</td>
+                                                <td className="break-all">
+                                                    {isDate ? formatDate(val) : val}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
