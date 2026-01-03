@@ -1,4 +1,4 @@
-import api from './api';
+import axios from 'axios';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -27,6 +27,14 @@ let MOCK_FORMS = [
     { id: generateId(), name: 'Solicitação de Férias', status: 'active', creator: 'rh.admin', createdAt: '2023-02-20T14:30:00Z', totalSubmissions: 32, link: 'https://forms.docuware.cloud/example2' },
 ];
 
+const adminApi = axios.create({
+    baseURL: '/DocuWare',
+    timeout: 30000,
+    headers: {
+        'Content-Type': 'application/json; charset=UTF-8'
+    }
+});
+
 export const adminService = {
     /**
      * @function getForms
@@ -50,11 +58,13 @@ export const adminService = {
             const authData = authDataStr ? JSON.parse(authDataStr) : {};
             const targetOrigin = authData.url || 'https://rcsangola.docuware.cloud';
 
-            const response = await api.post('/Settings/SettingsService.svc/jwt/GetFormHeaders', payload, {
-                baseURL: '/DocuWare', // Ensures it goes through proxy route if not default
+            // Get user token for authentication
+            const token = authData.token;
+
+            const response = await adminApi.post('/Settings/SettingsService.svc/jwt/GetFormHeaders', payload, {
                 headers: {
-                    'Content-Type': 'application/json; charset=UTF-8',
-                    'x-target-url': targetOrigin
+                    'x-target-url': targetOrigin,
+                    'Authorization': token ? `Bearer ${token}` : undefined
                 }
             });
 

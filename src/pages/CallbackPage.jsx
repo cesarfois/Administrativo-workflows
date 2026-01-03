@@ -1,41 +1,70 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authService } from '../services/authService';
+import { useAuth } from '../context/AuthContext';
 
 const CallbackPage = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const { reloadUser } = useAuth(); // Get reloadUser
     const [status, setStatus] = useState('Processando login...');
     const [error, setError] = useState(null);
+    const processedRef = useRef(false); // Ref to prevent double execution in StrictMode
 
     useEffect(() => {
         const processCallback = async () => {
+            if (processedRef.current) {
+                console.log('⚠️ Callback already processed. Skipping.');
+                return;
+            }
+
+            console.log('🔵 Processing Callback...');
             const code = searchParams.get('code');
-            const state = searchParams.get('state'); // Optional: Validate state for security
 
             if (!code) {
+                console.error('❌ No code found in URL params');
                 setError('Nenhum código de autorização encontrado na URL.');
                 return;
             }
 
+            processedRef.current = true; // Mark as processed immediately to prevent double-fire
+
             try {
                 setStatus('Trocando código por token...');
-                await authService.exchangeCodeForToken(code);
+                console.log('🔄 Exchanging code for token...');
+                const authData = await authService.exchangeCodeForToken(code);
+                console.log('✅ Token exchanged successfully:', authData);
+
+                // CRITICAL: Update AuthContext state before navigating
+                console.log('🔄 Reloading user context...');
+                reloadUser();
+
+                // VERIFICATION STEP
+                const verifyUser = sessionStorage.getItem('docuware_auth');
+                if (!verifyUser) {
+                    throw new Error('CRITICAL: Session storage failed to persist token!');
+                }
+                console.log('💾 Storage Verification: OK', JSON.parse(verifyUser));
 
                 setStatus('Login realizado com sucesso! Redirecionando...');
-                // Give a small delay for user to see success or just redirect immediately
+                console.log('🚀 Redirecting to dashboard...');
+
+                // FORCE RESYNC: Use hard redirect instead of SPA navigation
+                // FORCE RESYNC: Use hard redirect instead of SPA navigation
+                // This forces the App to re-mount and AuthContext to read fresh from sessionStorage
                 setTimeout(() => {
-                    navigate('/dashboard');
+                    window.location.href = '/dashboard';
                 }, 500);
 
             } catch (err) {
-                console.error('Callback Error:', err);
+                console.error('❌ Callback Error:', err);
                 setError(err.message || 'Falha ao processar login.');
+                processedRef.current = false; // Allow retry on error if needed? Maybe better to force user to retry login manually.
             }
         };
 
         processCallback();
-    }, [searchParams, navigate]);
+    }, [searchParams, navigate, reloadUser]);
 
     return (
         <div style={{

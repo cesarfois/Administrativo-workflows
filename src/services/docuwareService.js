@@ -172,7 +172,7 @@ export const docuwareService = {
         // Construct standard DocuWare Query Object
         const conditions = filters.map(filter => ({
             DBName: filter.fieldName,
-            Value: [filter.value]
+            Value: Array.isArray(filter.value) ? filter.value : [filter.value]
         }));
 
         const queryBody = {

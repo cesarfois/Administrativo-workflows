@@ -11,19 +11,30 @@ import SemaforosPage from './pages/SemaforosPage';
 import DownloadPage from './pages/DownloadPage';
 import AdminFormsPage from './pages/AdminFormsPage';
 import WorkflowHistoryPage from './pages/WorkflowHistoryPage';
+import ExportDataPage from './pages/ExportDataPage';
 import DashboardLayout from './components/Layout/DashboardLayout';
 import CallbackPage from './pages/CallbackPage';
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
+  const location = window.location;
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    console.log('⏳ ProtectedRoute: Loading...');
+    return <div>Loading...</div>;
+  }
 
   if (!user) {
+    console.warn('⛔ ProtectedRoute: Access denied. Redirecting to login.', {
+      path: location.pathname,
+      userState: user,
+      loadingState: loading
+    });
     return <Navigate to="/login" />;
   }
 
+  console.log('✅ ProtectedRoute: Access granted.', { path: location.pathname });
   return children;
 };
 
@@ -111,6 +122,16 @@ function App() {
                 <ProtectedRoute>
                   <DashboardLayout>
                     <WorkflowHistoryPage />
+                  </DashboardLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/export-data"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout>
+                    <ExportDataPage />
                   </DashboardLayout>
                 </ProtectedRoute>
               }

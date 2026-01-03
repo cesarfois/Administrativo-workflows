@@ -232,31 +232,81 @@ const SearchForm = ({ onSearch, onLog, totalCount = 0, onCabinetChange }) => {
                                     ))}
                                 </select>
 
-                                <div className="flex-1 relative">
-                                    <input
-                                        type="text"
-                                        list={`suggestions-${index}`}
-                                        className="input input-bordered input-sm w-full text-xs"
-                                        placeholder="Value..."
-                                        value={filter.value}
-                                        onFocus={async () => {
-                                            // Load suggestions if empty and field is selected
-                                            if (filter.fieldName && (!suggestions[index] || suggestions[index].length === 0)) {
-                                                const values = await docuwareService.getSelectList(selectedCabinet, filter.fieldName);
-                                                const sortedValues = values.sort((a, b) =>
-                                                    String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
-                                                );
-                                                setSuggestions(prev => ({ ...prev, [index]: sortedValues }));
-                                            }
-                                        }}
-                                        onChange={(e) => handleFilterChange(index, 'value', e.target.value)}
-                                    />
-                                    <datalist id={`suggestions-${index}`}>
-                                        {suggestions[index]?.map((val, i) => (
-                                            <option key={i} value={val} />
-                                        ))}
-                                    </datalist>
-                                </div>
+                                {(() => {
+                                    // Determine field type
+                                    const selectedField = fields.find(f => f.DBFieldName === filter.fieldName);
+                                    const isDate = selectedField && (selectedField.DWFieldType === 'Date' || selectedField.DWFieldType === 'DateTime');
+                                    const isNumeric = selectedField && (selectedField.DWFieldType === 'Int' || selectedField.DWFieldType === 'Decimal');
+
+                                    if (isDate) {
+                                        // Helper to safely get range values
+                                        const values = Array.isArray(filter.value) ? filter.value : [filter.value || '', ''];
+
+                                        return (
+                                            <div className="flex-1 flex gap-2 items-center">
+                                                <div className="flex items-center gap-1 flex-1">
+                                                    <span className="text-[10px] text-gray-500 font-bold uppercase">De:</span>
+                                                    <input
+                                                        type="date"
+                                                        className="input input-bordered input-sm w-full text-xs px-1"
+                                                        value={values[0]}
+                                                        onChange={(e) => {
+                                                            const newVals = [...values];
+                                                            newVals[0] = e.target.value;
+                                                            // Ensure second value exists
+                                                            if (newVals.length < 2) newVals.push('');
+                                                            handleFilterChange(index, 'value', newVals);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-1 flex-1">
+                                                    <span className="text-[10px] text-gray-500 font-bold uppercase">Até:</span>
+                                                    <input
+                                                        type="date"
+                                                        className="input input-bordered input-sm w-full text-xs px-1"
+                                                        value={values[1] || ''}
+                                                        onChange={(e) => {
+                                                            const newVals = [...values];
+                                                            // Ensure first value exists
+                                                            if (newVals.length < 1) newVals.push('');
+
+                                                            newVals[1] = e.target.value;
+                                                            handleFilterChange(index, 'value', newVals);
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="flex-1 relative">
+                                            <input
+                                                type={isNumeric ? "number" : "text"}
+                                                list={`suggestions-${index}`}
+                                                className="input input-bordered input-sm w-full text-xs"
+                                                placeholder="Value..."
+                                                value={filter.value}
+                                                onFocus={async () => {
+                                                    // Load suggestions if empty and field is selected
+                                                    if (filter.fieldName && (!suggestions[index] || suggestions[index].length === 0)) {
+                                                        const values = await docuwareService.getSelectList(selectedCabinet, filter.fieldName);
+                                                        const sortedValues = values.sort((a, b) =>
+                                                            String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
+                                                        );
+                                                        setSuggestions(prev => ({ ...prev, [index]: sortedValues }));
+                                                    }
+                                                }}
+                                                onChange={(e) => handleFilterChange(index, 'value', e.target.value)}
+                                            />
+                                            <datalist id={`suggestions-${index}`}>
+                                                {suggestions[index]?.map((val, i) => (
+                                                    <option key={i} value={val} />
+                                                ))}
+                                            </datalist>
+                                        </div>
+                                    );
+                                })()}
 
                                 {filters.length > 1 && (
                                     <button

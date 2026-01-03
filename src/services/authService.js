@@ -200,6 +200,10 @@ export const authService = {
 
     // 3. Logout Function
     logout: () => {
+        console.group('🚪 authService.logout() called');
+        console.trace('Logout Triggered By:');
+        console.groupEnd();
+
         sessionStorage.removeItem(AUTH_KEY);
         localStorage.removeItem('docuware_session_start');
         delete api.defaults.headers.common['Authorization'];
@@ -252,6 +256,8 @@ export const authService = {
 
                     } catch (refreshErr) {
                         processQueue(refreshErr, null);
+                        console.error('❌ Session expired. Logging out...', refreshErr);
+                        authService.logout();
                         return Promise.reject(refreshErr);
                     } finally {
                         isRefreshing = false;

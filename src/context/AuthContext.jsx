@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+import { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { authService } from '../services/authService';
 
 const AuthContext = createContext(null);
@@ -29,8 +29,18 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('docuware_session_start');
     };
 
+    const reloadUser = useCallback(() => {
+        const storedUser = authService.getCurrentUser();
+        if (storedUser) {
+            console.log('🔄 AuthContext: Reloading user from storage...', storedUser);
+            setUser(storedUser);
+        } else {
+            console.log('⚠️ AuthContext: No user found in storage during reload.');
+        }
+    }, []);
+
     return (
-        <AuthContext.Provider value={{ user, login, logout, loading }}>
+        <AuthContext.Provider value={{ user, login, logout, reloadUser, loading }}>
             {!loading && children}
         </AuthContext.Provider>
     );
