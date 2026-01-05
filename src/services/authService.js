@@ -8,6 +8,23 @@ const CLIENT_ID = import.meta.env.VITE_DOCUWARE_CLIENT_ID;
 const CLIENT_SECRET = import.meta.env.VITE_DOCUWARE_CLIENT_SECRET;
 const REDIRECT_URI = import.meta.env.VITE_DOCUWARE_REDIRECT_URI;
 
+/**
+ * Get the base URL for the proxy server.
+ * In development, uses localhost:3001 (local proxy server).
+ * In production (Netlify), uses the Netlify Functions endpoint.
+ */
+const getProxyBaseUrl = () => {
+    // Check if we're in development mode
+    const isDev = import.meta.env.DEV || window.location.hostname === 'localhost';
+
+    if (isDev) {
+        return 'http://localhost:3001';
+    }
+
+    // In production, use the current origin with Netlify Functions path
+    return window.location.origin + '/.netlify/functions/api';
+};
+
 // Flag to prevent multiple simultaneous refresh calls
 let isRefreshing = false;
 let failedQueue = [];
@@ -39,7 +56,8 @@ export const authService = {
 
             // 1. Get Identity Service Info to find the correct Identity Provider URL
             // Use /discovery endpoint to bypass DocuWare firewall (clean server-to-server request)
-            const serviceDesc = await axios.get(`http://localhost:3001/discovery?target=${encodeURIComponent(baseUrl)}`);
+            const proxyBase = getProxyBaseUrl();
+            const serviceDesc = await axios.get(`${proxyBase}/discovery?target=${encodeURIComponent(baseUrl)}`);
             const identityUrl = serviceDesc.data.IdentityServiceUrl;
 
             // Extract the org ID from the URL if possible, or just use the identity endpoint
@@ -86,7 +104,8 @@ export const authService = {
         try {
             // 1. Rediscover endpoints using /discovery endpoint
             // This bypasses WAF by making clean server-to-server requests without browser headers
-            const serviceDescResp = await axios.get(`http://localhost:3001/discovery?target=${encodeURIComponent(baseUrl)}`);
+            const proxyBase = getProxyBaseUrl();
+            const serviceDescResp = await axios.get(`${proxyBase}/discovery?target=${encodeURIComponent(baseUrl)}`);
             const serviceDesc = serviceDescResp.data;
 
             const identityUrl = serviceDesc.IdentityServiceUrl;
