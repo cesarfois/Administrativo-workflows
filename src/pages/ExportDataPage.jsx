@@ -66,6 +66,11 @@ const ExportDataPage = () => {
             dateObj = new Date(dateString);
         }
         if (isNaN(dateObj.getTime())) return '';
+
+        // Validate year - DocuWare returns placeholder dates like year 3938, 9999
+        const year = dateObj.getFullYear();
+        if (year > 2100 || year < 1900) return '';
+
         return simple ? dateObj.toLocaleDateString('pt-BR') : dateObj.toLocaleString('pt-BR');
     };
 

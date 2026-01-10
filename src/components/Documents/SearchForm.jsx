@@ -280,30 +280,68 @@ const SearchForm = ({ onSearch, onLog, totalCount = 0, onCabinetChange }) => {
                                     }
 
                                     return (
-                                        <div className="flex-1 relative">
+                                        <div className="flex-1 relative" data-dropdown-index={index}>
                                             <input
                                                 type={isNumeric ? "number" : "text"}
-                                                list={`suggestions-${index}`}
                                                 className="input input-bordered input-sm w-full text-xs"
-                                                placeholder="Value..."
+                                                placeholder="Clique ou digite para filtrar..."
                                                 value={filter.value}
-                                                onFocus={async () => {
+                                                onFocus={async (e) => {
+                                                    // Show dropdown
+                                                    const dropdown = e.target.parentElement.querySelector('.dropdown-menu');
+                                                    if (dropdown) dropdown.classList.remove('hidden');
+
                                                     // Load suggestions if empty and field is selected
                                                     if (filter.fieldName && (!suggestions[index] || suggestions[index].length === 0)) {
+                                                        console.log(`[SearchForm] Loading suggestions for: ${filter.fieldName}`);
                                                         const values = await docuwareService.getSelectList(selectedCabinet, filter.fieldName);
+                                                        console.log(`[SearchForm] Received ${values.length} values:`, values);
                                                         const sortedValues = values.sort((a, b) =>
                                                             String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' })
                                                         );
                                                         setSuggestions(prev => ({ ...prev, [index]: sortedValues }));
                                                     }
                                                 }}
+                                                onBlur={(e) => {
+                                                    // Hide dropdown after delay
+                                                    setTimeout(() => {
+                                                        const dropdown = e.target.parentElement?.querySelector('.dropdown-menu');
+                                                        if (dropdown) dropdown.classList.add('hidden');
+                                                    }, 200);
+                                                }}
                                                 onChange={(e) => handleFilterChange(index, 'value', e.target.value)}
                                             />
-                                            <datalist id={`suggestions-${index}`}>
-                                                {suggestions[index]?.map((val, i) => (
-                                                    <option key={i} value={val} />
-                                                ))}
-                                            </datalist>
+                                            {/* Custom Dropdown with filtered results */}
+                                            {suggestions[index] && suggestions[index].length > 0 && (
+                                                <div className="dropdown-menu hidden absolute z-50 w-full mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                    {suggestions[index]
+                                                        .filter(val =>
+                                                            !filter.value || String(val).toLowerCase().includes(filter.value.toLowerCase())
+                                                        )
+                                                        .slice(0, 100)
+                                                        .map((val, i) => (
+                                                            <button
+                                                                key={i}
+                                                                className="w-full text-left px-3 py-2 text-xs hover:bg-primary hover:text-primary-content transition-colors cursor-pointer border-b border-base-200 last:border-0"
+                                                                onMouseDown={(e) => {
+                                                                    e.preventDefault();
+                                                                    handleFilterChange(index, 'value', val);
+                                                                }}
+                                                                type="button"
+                                                            >
+                                                                {val}
+                                                            </button>
+                                                        ))
+                                                    }
+                                                    {suggestions[index].filter(val =>
+                                                        !filter.value || String(val).toLowerCase().includes(filter.value.toLowerCase())
+                                                    ).length === 0 && (
+                                                            <div className="px-3 py-2 text-xs text-gray-400 italic">
+                                                                Nenhuma opção encontrada para "{filter.value}"
+                                                            </div>
+                                                        )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })()}

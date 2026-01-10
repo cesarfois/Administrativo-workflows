@@ -24,9 +24,15 @@ const WorkflowHistoryPage = () => {
             try {
                 // Fetch Cabinets
                 const cabList = await docuwareService.getCabinets();
-                setCabinets(cabList);
-                if (cabList.length > 0) {
-                    setSelectedCabinet(cabList[0].Id);
+
+                // Sort cabinets alphabetically by name
+                const sortedCabinets = [...cabList].sort((a, b) =>
+                    (a.Name || '').localeCompare(b.Name || '', 'pt-BR', { sensitivity: 'base' })
+                );
+
+                setCabinets(sortedCabinets);
+                if (sortedCabinets.length > 0) {
+                    setSelectedCabinet(sortedCabinets[0].Id);
                 }
 
                 // Fetch Organization ID for links
@@ -87,22 +93,16 @@ const WorkflowHistoryPage = () => {
             if (!instances || instances.length === 0) {
                 setHistoryInstances([]);
             } else {
-                // Sort instances by StartDate descending (newest first), then by Version desc
+                // Sort instances alphabetically by Name, then by Version desc
                 const sorted = [...instances].sort((a, b) => {
-                    const parseDate = (d) => {
-                        if (!d) return 0;
-                        if (typeof d === 'string' && d.startsWith('/Date(')) {
-                            return parseInt(d.match(/\d+/)[0], 10);
-                        }
-                        return new Date(d).getTime();
-                    };
+                    // Primary: Alphabetical by Name
+                    const nameA = (a.Name || '').toLowerCase();
+                    const nameB = (b.Name || '').toLowerCase();
 
-                    const dateA = parseDate(a.StartDate || a.StartedAt || a.TimeStamp);
-                    const dateB = parseDate(b.StartDate || b.StartedAt || b.TimeStamp);
+                    if (nameA < nameB) return -1;
+                    if (nameA > nameB) return 1;
 
-                    if (dateB !== dateA) return dateB - dateA;
-
-                    // Fallback to Version
+                    // Secondary: Version descending
                     return (b.Version || 0) - (a.Version || 0);
                 });
                 setHistoryInstances(sorted);
@@ -141,6 +141,14 @@ const WorkflowHistoryPage = () => {
         } else {
             dateObj = new Date(dateString);
         }
+
+        // Validate date - return empty for invalid or placeholder dates
+        if (isNaN(dateObj.getTime())) return '';
+
+        const year = dateObj.getFullYear();
+        // DocuWare sometimes returns placeholder dates with years like 3938, 9999, etc.
+        // Also filter out dates before 1900 as they're likely invalid
+        if (year > 2100 || year < 1900) return '';
 
         if (simple) return dateObj.toLocaleDateString('pt-BR');
         return dateObj.toLocaleString('pt-BR');
